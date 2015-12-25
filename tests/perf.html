@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>Reactive Dot :: Perf</title>
+</head>
+<body>
+	<script>
+		window.process = {
+			toString: function () {
+				return '[object process]';
+			},
+
+			nextTick: function (fn) {
+				fn();
+			}
+		};
+	</script>
+	<script src="../rdot.js"></script>
+	<script src="../../JSSDK/Emitter/Emitter.js"></script>
+
+	<script type="text/javascript">document.write(new Date)</script>
+
+	<script>
+		var bench = function (name, fn) {
+			var start = performance.now();
+			var inter = 5;
+
+			for (var j = 0; j < inter; j++) {
+				for (var i = 0; i < 1e4; i++) {
+					fn();
+				}
+			}
+
+			console.warn(name + ':', ((performance.now() - start)/inter).toFixed(4) + 'ms');
+		};
+
+		(function () {
+			var ValueBox = function (value) { this.value = value };
+			Emitter.apply(ValueBox.prototype);
+
+			ValueBox.prototype.getValue = function () {
+				return this.value;
+			};
+
+			ValueBox.prototype.setValue = function (value) {
+				this.value = value;
+				this.emit('change');
+			};
+
+			var foo = new ValueBox('');
+			var bar = new ValueBox('');
+			var foobar;
+			var update = function () {
+				foobar = foo.getValue() + bar.getValue();
+			};
+
+			foo.on('change', update);
+			bar.on('change', update);
+
+			bench('emitter:create', function () {
+				var foo = new ValueBox('foo');
+				var bar = new ValueBox('bar');
+
+				foo.on('value', update);
+				bar.on('value', update);
+			});
+
+			bench('emitter:set', function () {
+				foobar = '';
+				foo.setValue('foo');
+				bar.setValue('bar');
+
+				if (foobar !== 'foobar') {
+					throw 'FAIL';
+				}
+
+				foo.setValue('FOO');
+				if (foobar !== 'FOObar') {
+					throw 'FAIL';
+				}
+
+				bar.setValue('BAR');
+				if (foobar !== 'FOOBAR') {
+					throw 'FAIL';
+				}
+			});
+		})();
+
+		(function () {
+			var foo = rdot('');
+			var bar = rdot('');
+			var foobar;
+
+			rdot(function () { return foo + bar }).onValue(function (val) {
+				foobar = val;
+			});
+
+			bench('rdot:create', function () {
+				var foo = rdot('foo');
+				var bar = rdot('bar');
+				var foobar = rdot(function () { return foo() + bar() });
+			});
+
+			bench('rdot:set', function () {
+				foobar = '';
+				foo.set('foo');
+				bar.set('bar');
+
+				if (foobar !== 'foobar') {
+					throw 'FAIL';
+				}
+
+				foo.set('FOO');
+				if (foobar !== 'FOObar') {
+					throw 'FAIL';
+				}
+
+				bar.set('BAR');
+				if (foobar !== 'FOOBAR') {
+					throw 'FAIL';
+				}
+			});
+		})();
+	</script>
+
+	<script src="https://rawgit.com/Riim/cellx/master/cellx.js"></script>
+	<script>
+		(function () {
+			var foo = cellx('');
+			var bar = cellx('');
+			var foobar;
+
+			var x = cellx(function () { return foo() + bar() });
+
+			x('subscribe', function (val, evt) {
+				foobar = evt.value;
+			});
+
+			bench('cellx:create', function () {
+				var foo = cellx('foo');
+				var bar = cellx('bar');
+				var foobar = cellx(function () { return foo() + bar() });
+			});
+
+			bench('cellx:set', function () {
+				foobar = '';
+				foo('foo');
+				bar('bar');
+
+				if (foobar !== 'foobar') {
+					throw 'FAIL';
+				}
+
+				foo('FOO');
+				if (foobar !== 'FOObar') {
+					throw 'FAIL';
+				}
+
+				bar('BAR');
+				if (foobar !== 'FOOBAR') {
+					throw 'FAIL';
+				}
+			});
+		})();
+
+//		var test = function () {
+//			var results = foobar();
+//			foobar = null;
+//
+//			if (results !== 'foobar') {
+//				throw "FAIL";
+//			}
+//		};
+//
+//		test();
+//
+//		var itr = 0;
+//		setTimeout(function _next() {
+//			for (var i = 0; i < 50000; i++) {
+//				test();
+//			}
+//
+//			if (++itr < 10) {
+//				setTimeout(_next, 2000);
+//			} else {
+//				console.log('end');
+//			}
+//		}, 5000);
+	</script>
+</body>
+</html>
