@@ -10,21 +10,16 @@
 
 	<script src="https://cdn.rawgit.com/Automattic/expect.js/0.3.1/index.js"></script>
 	<script src="https://cdn.rawgit.com/mochajs/mocha/2.2.5/mocha.js"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/should.js/7.1.1/should.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/should.js/7.1.1/should.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.22/require.js"></script>
 
 	<script>mocha.setup('bdd')</script>
 
-	<script src="../rdot.js"></script>
-	<script src="../rdot.prp.js"></script>
-	<script src="../rdot.model.js"></script>
-
-	<script src="rdot.tests.js"></script>
-	<script src="rdot.prp.tests.js"></script>
-	<script src="rdot.model.tests.js"></script>
-
 	<script>
-		mocha.checkLeaks();
-		mocha.run();
+        require(['./rdot.tests'], function () {
+            mocha.checkLeaks();
+            mocha.run();
+        });
 	</script>
 </body>
 </html>

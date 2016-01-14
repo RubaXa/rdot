@@ -5,14 +5,14 @@
 	// это никак не влияло на приложение, т.е. получить свой `Function` и использовать его.
 	// Для этого, создаем iframe, вставляем код в него через `document.write` и уже его возвращаем.
 	// Это трюк позволяет получить `Function `из `iframe` и делать с ним что угодно.
-	const head = document.head || document.getElementsByTagName('head')[0];
-	let iframe = document.createElement('iframe');
-
-	head.appendChild(iframe);
-	iframe.contentWindow.reactiveExport = (fn) => factory = fn;
-	iframe.contentDocument.write('<script>reactiveExport(' + factory.toString() + ')</script>');
-	head.removeChild(iframe);
-	iframe = null;
+	//const head = document.head || document.getElementsByTagName('head')[0];
+	//let iframe = document.createElement('iframe');
+	//
+	//head.appendChild(iframe);
+	//iframe.contentWindow.reactiveExport = (fn) => factory = fn;
+	//iframe.contentDocument.write('<script>reactiveExport(' + factory.toString() + ')</script>');
+	//head.removeChild(iframe);
+	//iframe = null;
 
 	if (typeof define === 'function' && define.amd) {
 		define([], factory);
@@ -50,9 +50,50 @@
 	let _activeDot;
 
 	/** @type {ReactiveDot[]} */
-	let _batchDots;
+	let _queue = [];
+	let _queueMap = {};
+
+	let _revision = 0;
+	let _computing = void 0;
 
 	const defaultOptions = {};
+
+	function _add2Queue(dot) {
+		if (_queueMap[dot.id] === void 0) {
+			dot.obsolete = true;
+
+			_queue.push(dot);
+			_queueMap[dot.id] = true;
+		}
+	}
+
+	function _computingAll() {
+		if (_computing !== void 0) {
+			_computing = void 0;
+			_revision++;
+
+			let length = 0;
+
+			do {
+				let dot = _queue[length];
+				let linked = dot.linked;
+
+				// computing
+				dot();
+
+				if (linked) {
+					for (let i = 0; i < linked.length; i++) {
+						_add2Queue(linked[i]);
+					}
+				}
+
+				length++;
+			} while (length < _queue.length);
+
+			_queue = [];
+			_queueMap = {};
+		}
+	}
 
 	/**
 	 * Get value
@@ -71,12 +112,16 @@
 	 */
 	function fn_set(value) {
 		const dot = this;
-		
+
 		dot.constant = typeof value !== 'function';
 		dot.getter = value;
 		dot.obsolete = true;
 
-		notify(dot);
+		_add2Queue(dot);
+
+		if (_computing === void 0) {
+			_computing = setTimeout(_computingAll, 0);
+		}
 
 		return dot;
 	}
@@ -146,25 +191,7 @@
 	 * @private
 	 */
 	function notify(dot, currentValue, previousValue) {
-		const linked = dot.linked;
 		const _onValue = dot._onValue;
-
-		let idx = linked.length;
-		let linkedDot;
-
-		while (idx--) {
-			linkedDot = linked[idx];
-
-			if (!linkedDot.obsolete) {
-				linkedDot.obsolete = true;
-
-				if (_batchDots === void 0) {
-					linkedDot();
-				} else {
-					_batchDots.push(linkedDot);
-				}
-			}
-		}
 
 		if (_onValue !== void 0) {
 			if (arguments.length > 1) {
@@ -173,9 +200,6 @@
 				} else {
 					_onValue.forEach(fn => fn(currentValue, previousValue)); // slowest
 				}
-			} else {
-				// Recomputed
-				dot();
 			}
 		}
 	}
@@ -189,7 +213,8 @@
 	const rdot = function newReactiveDot(value, options) {
 		if (options === void 0) {
 			options = defaultOptions;
-		} if (typeof options === 'function') {
+		}
+		if (typeof options === 'function') {
 			options = {setter: options};
 		}
 
@@ -200,23 +225,32 @@
 		 * @return {*}
 		 */
 		let dot = function reactiveDot() {
+			if (_computing !== void 0) {
+				_computingAll();
+			}
+
 			let currentValue = dot.value;
 			let previousValue = currentValue;
 			let previousActiveDot = _activeDot;
 			let changed;
 
-			if (previousActiveDot !== void 0) {
-				if (dot._linked[previousActiveDot.id] === void 0) {
-					dot._linked[previousActiveDot.id] = true;
-					dot.linked.push(previousActiveDot);
+			if (_activeDot !== void 0) {
+				if (dot._linked[_activeDot.id] === void 0) {
+					dot._linked[_activeDot.id] = true;
+					dot.linked.push(_activeDot);
 
-					previousActiveDot.dependsOn.push(dot);
+					_activeDot.dependsOn.push(dot);
 				}
 
-				previousActiveDot._dependsOn[dot.id] = previousActiveDot.tick;
+				_activeDot._dependsOn[dot.id] = _activeDot.tick;
+				//console.log('setTick.dot: %d, prev: %d, active: %d', dot.id, dependsOnTick, _activeDot.tick);
 			}
 
-			if (dot.obsolete) {
+			if (dot.revision !== _revision) {
+				//console.log('dot: %d, tick: %d, rev: %d (new: %d)', dot.id, dot.tick, dot.revision, _revision);
+
+				dot.revision = _revision;
+
 				// Значение устарело, требуется перерасчет
 				dot.tick++;
 
@@ -231,11 +265,11 @@
 					}
 				}
 
-				_activeDot = dot;
-				dot.computing = true;
-
 				// Computing value
+				//console.log('getter.dot: %d, rev: %d, tick: %d', dot.id, _revision, dot.tick);
+				_activeDot = dot;
 				currentValue = dot.constant ? dot.getter : dot.getter(dot);
+				_activeDot = previousActiveDot;
 
 				if (_setter !== void 0) {
 					currentValue = _setter(currentValue, previousValue);
@@ -244,8 +278,11 @@
 				changed = previousValue !== currentValue;
 
 				dot.value = currentValue;
-				dot.computing = false;
 				dot.obsolete = false;
+
+				if (changed) {
+					notify(dot, currentValue, previousValue);
+				}
 
 				// Проверяем точки, от которых мы зависим
 				let dependsOn = dot.dependsOn;
@@ -255,25 +292,27 @@
 				if (idx !== 0) {
 					let depDot;
 					let tick = dot.tick;
+					//console.log('dependsOn.check: %d, tick: %d', dot.id, dot.tick);
 
 					while (idx--) {
 						depDot = dependsOn[idx];
+						//console.log('dependsOn.id: %d, cur.tick: %d, eq.tick: %d', depDot.id, _dependsOn[depDot.id], tick);
 
 						if (_dependsOn[depDot.id] !== tick) {
+							console.warn('unlink.dot: %d, from.dot: %d', dot.id, depDot.id);
 							_unlink(depDot, dot);
 						}
 					}
 				}
-
-				_activeDot = previousActiveDot;
-
-				if (changed) {
-					notify(dot, currentValue, previousValue);
-				}
 			}
+
 
 			return currentValue;
 		};
+
+		for (var key in rdot.fn) {
+			dot[key] = rdot.fn[key];
+		}
 
 		// Readonly
 		dot.id = ++gid;
@@ -292,32 +331,9 @@
 
 
 	/**
-	 * Collect all the changes in one batch.
-	 * @param {function} callback
-	 */
-	rdot.batch = function batch(callback) {
-		const prev = _batchDots;
-
-		if (prev === void 0) {
-			_batchDots = [];
-		}
-
-		callback();
-
-		if (prev === void 0) {
-			// slowest
-			_batchDots.forEach(dot => {
-				dot();
-			});
-
-			_batchDots = prev;
-		}
-	};
-
-	/**
 	 * Расширение методов ReactiveDot
 	 */
-	rdot.fn = Function.prototype;
+	rdot.fn = {};
 	rdot.fn.extend = function (methods) {
 		for (let key in methods) {
 			this[key] = methods[key];
@@ -348,7 +364,9 @@
 	rdot.dom = function dom(el) {
 		const dot = rdot(el.value, {
 			setup() {
-				dot.handle = () => {dot.set(el.value);};
+				dot.handle = () => {
+					dot.set(el.value);
+				};
 				el.addEventListener('input', dot.handle);
 			},
 

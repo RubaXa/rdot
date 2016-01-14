@@ -5,17 +5,6 @@
 	<title>Reactive Dot :: Perf</title>
 </head>
 <body>
-	<script>
-		window.process = {
-			toString: function () {
-				return '[object process]';
-			},
-
-			nextTick: function (fn) {
-				fn();
-			}
-		};
-	</script>
 	<script src="../rdot.js"></script>
 	<script src="../../JSSDK/Emitter/Emitter.js"></script>
 
@@ -35,7 +24,7 @@
 			console.warn(name + ':', ((performance.now() - start)/inter).toFixed(4) + 'ms');
 		};
 
-		(function () {
+		0 && (function () {
 			var ValueBox = function (value) { this.value = value };
 			Emitter.apply(ValueBox.prototype);
 
@@ -87,7 +76,7 @@
 			});
 		})();
 
-		(function () {
+		0 && (function () {
 			var foo = rdot('');
 			var bar = rdot('');
 			var foobar;
@@ -126,7 +115,7 @@
 
 	<script src="https://rawgit.com/Riim/cellx/master/cellx.js"></script>
 	<script>
-		(function () {
+		0 && (function () {
 			var foo = cellx('');
 			var bar = cellx('');
 			var foobar;
@@ -163,6 +152,126 @@
 				}
 			});
 		})();
+
+
+
+		var MAX_LAYERS = 5;
+		var cellxCellLayer = (function (max) {
+			var root = {
+				prop1: new cellx.Cell(1),
+				prop2: new cellx.Cell(2),
+				prop3: new cellx.Cell(3),
+				prop4: new cellx.Cell(4)
+			};
+			var next = root;
+
+			for (var i = max; i--;) {
+				next = (function (m) {
+					var s = {
+						prop1: new cellx.Cell(function() { return m.prop2.get(); }),
+						prop2: new cellx.Cell(function() { return m.prop1.get() - m.prop3.get(); }),
+						prop3: new cellx.Cell(function() { return m.prop2.get() + m.prop4.get(); }),
+						prop4: new cellx.Cell(function() { return m.prop3.get(); })
+					};
+
+					s.prop1.on('change', function() {});
+					s.prop2.on('change', function() {});
+					s.prop3.on('change', function() {});
+					s.prop4.on('change', function() {});
+
+					s.prop1.get();
+					s.prop2.get();
+					s.prop3.get();
+					s.prop4.get();
+
+					return s;
+				})(next);
+			}
+
+			return {start: root, end: next};
+		})(MAX_LAYERS);
+
+		var cellxLayer = (function (max) {
+			var root = {
+				prop1: cellx(1),
+				prop2: cellx(2),
+				prop3: cellx(3),
+				prop4: cellx(4)
+			};
+			var next = root;
+
+			for (var i = max; i--;) {
+				next = (function (m) {
+					var s = {
+						prop1: cellx(function() { return m.prop2(); }),
+						prop2: cellx(function() { return m.prop1() - m.prop3(); }),
+						prop3: cellx(function() { return m.prop2() + m.prop4(); }),
+						prop4: cellx(function() { return m.prop3(); })
+					};
+
+//						s.prop1.on('change', function() {});
+//						s.prop2.on('change', function() {});
+//						s.prop3.on('change', function() {});
+//						s.prop4.on('change', function() {});
+
+					s.prop1();
+					s.prop2();
+					s.prop3();
+					s.prop4();
+
+					return s;
+				})(next);
+			}
+
+			return {start: root, end: next};
+		})(MAX_LAYERS);
+
+		var rdotLayer = (function (max) {
+			var root = {
+				prop1: rdot(1),
+				prop2: rdot(2),
+				prop3: rdot(3),
+				prop4: rdot(4)
+			};
+			var next = root;
+
+			for (var i = max; i--;) {
+				next = (function (m) {
+					var s = {
+						prop1: rdot(function() { return m.prop2(); }),
+						prop2: rdot(function() { return m.prop1() - m.prop3(); }),
+						prop3: rdot(function() { return m.prop2() + m.prop4(); }),
+						prop4: rdot(function() { return m.prop3(); })
+					};
+
+					s.prop1();
+					s.prop2();
+					s.prop3();
+					s.prop4();
+
+					return s;
+				})(next);
+			}
+
+			return {start: root, end: next};
+		})(MAX_LAYERS);
+
+		console.group('Layers');
+		bench('cellx.Cell', function () {
+			cellxCellLayer.start.prop1.set(Math.random());
+			cellxCellLayer.end.prop1.get();
+		});
+
+		bench('cellx', function () {
+			cellxLayer.start.prop1(Math.random());
+			cellxLayer.end.prop1();
+		});
+
+		bench('rdot', function () {
+			rdotLayer.start.prop1.set(Math.random());
+			rdotLayer.end.prop1();
+		});
+		console.groupEnd();
 
 //		var test = function () {
 //			var results = foobar();

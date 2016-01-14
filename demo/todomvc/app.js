@@ -35,9 +35,9 @@
 	// Видимость подвала
 	const footerVisiblity = todosStorage.map(todos => todos.length > 0);
 
-	footerVisiblity.onValue(state => {
-		footerEl.style.display = state ? '' : 'none';
-	});
+	footerVisiblity
+		.map(state => state ? '' : 'none')
+		.assign(footerEl.style, 'display');
 
 	// Выбранный фильтр
 	location
