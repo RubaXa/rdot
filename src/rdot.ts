@@ -6,6 +6,7 @@ type ReactiveCallback<T> = (dot?:ReactiveDot<T>) => void;
 type ReactiveGetter<T> = (dot?:ReactiveDot<T>) => T;
 type ReactiveSetter<T> = (currentValue?:T, previousValue?:T) => T;
 type ReactiveOnValueListener<T> = (currentValue?:T, previousValue?:T) => void;
+type ReactiveCombinator<T> = (dots:Array<T>) => ReactiveDot<T>;
 
 export interface IReactiveDotFactory {
 	<T>(value?:T, setter?:ReactiveSetter<T>): ReactiveDot<T>;
@@ -13,10 +14,18 @@ export interface IReactiveDotFactory {
 	<T>(getter?:ReactiveGetter<T>, setter?:ReactiveSetter<T>): ReactiveDot<T>;
 	<T>(getter?:ReactiveGetter<T>, options?:ReactiveOptions<T>): ReactiveDot<T>;
 
+	/** Extend `rdot` methods */
 	extend?(methods:any):void;
+
+	forceCompute?(dot:ReactiveDot<any>):void;
 
 	/** Create a reactive dot and bind it with HTMLElement */
 	dom?(element:HTMLInputElement):ReactiveDom;
+
+	fromEvent?<T extends Event>(element:HTMLElement, eventName:string):ReactiveDot<T>;
+
+	/** Combines two or more dots together */
+	combine?<T, R>(dots:Array<T>, combinator?:ReactiveCombinator<T>):ReactiveDot<R>;
 }
 
 /** Reactive value containter */
@@ -94,16 +103,27 @@ let _computing:number = void 0;
 
 const defaultOptions:ReactiveOptions<any> = {};
 
-function _add2Queue(dot:ReactiveDotPrivate<any>) {
+function _add2Queue(dot:ReactiveDotPrivate<any>, compute?:boolean) {
 	if (_queueExists[dot.id] === void 0) {
+		dot.revision = null;
 		_queue.push(dot);
 		_queueExists[dot.id] = 1; // wtf? невозможно строго указать, что индекс может быть только цифровым, например `_queueMap['for'] = 1;` не выдас ошибок
+	}
+
+	if (compute && (_computing === void 0 && _computing !== -1)) {
+		if (dot.onValueListeners !== void 0 || dot.options.sync === true) {
+			_computing = _computing || 1;
+			_computingAll();
+		}
+		else {
+			_computing = setTimeout(_computingAll, 0);
+		}
 	}
 }
 
 function _computingAll() {
-	if (_computing !== void 0) {
-		_computing = void 0;
+	if (_computing !== void 0 && _computing !== -1) {
+		_computing = -1;
 		_revision++;
 
 		let cursor = 0;
@@ -126,6 +146,7 @@ function _computingAll() {
 
 		_queue = [];
 		_queueExists = {};
+		_computing = void 0;
 	}
 }
 
@@ -145,7 +166,7 @@ const rdot:IReactiveDotFactory = <T>(value?, opts?):ReactiveDot<T> => {
 	let _setter:ReactiveSetter<T> = options.setter;
 
 	let dot:ReactiveDotPrivate<T> = <ReactiveDotPrivate<T>>function reactiveDot() {
-		if (_computing !== void 0) {
+		if (_computing !== void 0 && _computing !== -1) {
 			_computingAll();
 		}
 
@@ -169,11 +190,8 @@ const rdot:IReactiveDotFactory = <T>(value?, opts?):ReactiveDot<T> => {
 		// Значение устарело, требуется перерасчет
 		if (dot.revision !== _revision) {
 			//console.log('dot: %d, tick: %d, rev: %d (new: %d)', dot.id, dot.tick, dot.revision, _revision);
-			dot.revision = _revision;
 
-			dot.tick++;
-
-			if (dot.interactive === false) {
+			if (!dot.interactive) {
 				// Переводим в интерактивное состояние
 				dot.interactive = true;
 				options.setup && options.setup.call(dot);
@@ -183,6 +201,9 @@ const rdot:IReactiveDotFactory = <T>(value?, opts?):ReactiveDot<T> => {
 					return dot.value;
 				}
 			}
+
+			dot.tick++;
+			dot.revision = _revision;
 
 			// Computing value
 			//console.log('getter.dot: %d, rev: %d, tick: %d', dot.id, _revision, dot.tick);
@@ -232,9 +253,9 @@ const rdot:IReactiveDotFactory = <T>(value?, opts?):ReactiveDot<T> => {
 	};
 
 	// Extending hack
-	for (let key in rdot['fn']) {
-		dot[key] = rdot['fn'][key];
-	}
+	//for (let key in rdot['fn']) {
+	//	dot[key] = rdot['fn'][key];
+	//}
 
 	// Readonly private props
 	dot.id = ++gid;
@@ -283,15 +304,7 @@ rdot.extend({
 			dot.getter = value;
 		}
 
-		_add2Queue(dot);
-
-		if (dot.onValueListeners !== void 0 || dot.options.sync === true) {
-			_computing = _computing || 1;
-			_computingAll();
-		}
-		else if (_computing === void 0) {
-			_computing = setTimeout(_computingAll, 0);
-		}
+		_add2Queue(dot, true);
 
 		return dot;
 	},
@@ -358,6 +371,11 @@ function _notify(dot:ReactiveDotPrivate<any>, currentValue:any, previousValue:an
 	}
 }
 
+rdot.forceCompute = (dot:ReactiveDot<any>):void => {
+	dot.value = void 0; // clear value
+	_add2Queue(dot as ReactiveDotPrivate<any>, true);
+};
+
 rdot.dom = (el:HTMLInputElement):ReactiveDom => {
 	const dot:ReactiveDom = rdot<string>(el.value, {
 		setup() {
@@ -388,6 +406,41 @@ rdot.dom = (el:HTMLInputElement):ReactiveDom => {
 	dot();
 
 	return dot;
+};
+
+rdot.fromEvent = <T extends Event>(el:HTMLElement, eventName:string):ReactiveDot<T> => {
+	let dot = rdot(new Event(eventName) as T, {
+		setup() {
+			this.handle = (evt) => this.set(evt);
+			el.addEventListener(eventName, this.handle);
+		},
+
+		teardown() {
+			el.removeEventListener(eventName, this.handle);
+			this.handle = null;
+		}
+	});
+
+	dot(); // setup
+
+	return dot as ReactiveDot<T>;
+};
+
+rdot.combine = <T, R>(dots:Array<T>, combinator?:ReactiveCombinator<T>):ReactiveDot<R> => {
+	const length:number = dots.length;
+
+	return rdot<R>(() => {
+		let dot;
+		let idx:number = length;
+		let results:Array<any> = new Array(length);
+
+		while (idx--) {
+			dot = dots[idx];
+			results[idx] = dot ? (dot.get ? dot.get() : (dot.onValue ? dot() : dot)) : dot;
+		}
+
+		return combinator ? combinator.apply(null, results) : results;
+	});
 };
 
 // Export

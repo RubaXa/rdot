@@ -38,7 +38,17 @@
 	<p>Part of <a href="http://todomvc.com">TodoMVC</a></p>
 </footer>
 
-<script src="../../rdot.js"></script>
+<script>
+	var module = {exports: {}};
+	var exports = module.exports;
+	var require;
+</script>
+<script src="../../src/rdot.js"></script>
+<script>
+	window.rdot = module.exports['default'];
+	module = exports = void 0;
+</script>
+
 <script src="../../rdot.prp.js"></script>
 <script src="../../rdot.model.js"></script>
 

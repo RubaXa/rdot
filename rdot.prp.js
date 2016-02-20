@@ -13,7 +13,7 @@
 })((rdot) => {
 	'use strict';
 
-	rdot.fn.extend({
+	rdot.extend({
 		map(fn) {
 			return rdot(() => fn(this(), this));
 		},

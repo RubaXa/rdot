@@ -1,7 +1,12 @@
 ReactiveDot
 -----------
-Всё это написано с целью моего самообучения и детального знакомства с реактивным программированием.
+Всё это написано с целью моего самообучения и детального знакомства с реактивным программированием и TS.
 
+
+### Пример проложения
+
+ - TodoMVC — [online](//rubaxa.gitgub.io/rdot/demo/todomvc/) / [source](./demo/todomvc/)
+ 
 
 ### Установка
 
@@ -42,7 +47,7 @@ b.set(-3); // "sum: 0" — да, схлопывания нет, оно не бы
 ```js
 (function () {
 	// Счетчик + сеттер, который при получении нового значения, прибовляет к нему старое
-	const counter = rdot(0, (newValue, oldValue) => newValue + (newValue||0));
+	const counter = rdot(0, (newValue, oldValue) => newValue + (oldValue||0));
 
 	// Создаем «рективный поток» на основе события `click`:
 	rdot.fromEvent(form.up, 'click').onValue(() => counter.set(+1));
@@ -77,7 +82,7 @@ b.set(-3); // "sum: 0" — да, схлопывания нет, оно не бы
 
 ```js
 (function (form) {
-	// Создаем реактивную двухстороннюю связку с DOM-элементом
+	// Создаем реактивную двухстороннюю связку с Input-элементом
 	const username = rdot.dom(form.username);
 	const fullname = rdot.dom(form.fullname);
 

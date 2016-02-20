@@ -22,7 +22,7 @@
 				this[key]();
 
 				this[key].onValue(() => {
-					rdot.notify(this.onChange, this, this);
+					rdot.forceCompute(this.onChange);
 				}, false);
 			}
 		}
@@ -40,7 +40,7 @@
 
 		_regItem(item) {
 			item.onChange.onValue(() => {
-				rdot.notify(this.values, this._items, this._items);
+				rdot.forceCompute(this.values);
 			}, false);
 
 			this._emitChange();

@@ -6,19 +6,21 @@
 	const FILTER_ACTIVE = '/active';
 	const FILTER_COMPLETED = '/completed';
 
+	const newTodoEl = document.querySelector('.new-todo');
+	const listEl = document.querySelector('.todo-list');
+	const footerEl = document.querySelector('.footer');
+	const filtersEl = footerEl.querySelectorAll('.filters a');
+	const todoCountEl = footerEl.querySelector('.todo-count');
+	const clearCompletedEl = footerEl.querySelector('.clear-completed');
+
 	const location = rdot.fromEvent(window, 'hashchange').map(value => window.location.href.split('#')[1] || FILTER_ALL);
-	const newTodo = rdot.dom(document.querySelector('.new-todo'));
+	const newTodo = rdot.dom(newTodoEl);
 	const todosStorage = new rdot.Model.List();
 	const stats = new rdot.Model({
 		left: 0,
 		completed: 0
 	});
 
-	const listEl = document.querySelector('.todo-list');
-	const footerEl = document.querySelector('.footer');
-	const filtersEl = footerEl.querySelectorAll('.filters a');
-	const todoCountEl = footerEl.querySelector('.todo-count');
-	const clearCompletedEl = footerEl.querySelector('.clear-completed');
 
 	// Слушаем событие инпута
 	rdot.fromEvent(newTodo.el, 'keydown').onValue(evt => {
@@ -34,6 +36,7 @@
 
 	// Видимость подвала
 	const footerVisiblity = todosStorage.map(todos => todos.length > 0);
+
 
 	footerVisiblity
 		.map(state => state ? '' : 'none')
@@ -89,14 +92,11 @@
 
 
 	function renderTodosList(todos) {
-		let count = 0;
-
+		console.info('renderTodosList:', todos.length);
 		console.time('renderTodosList');
 
-		todos.forEach((todo) => {
-			const el = listEl.children[count] || document.createElement('li');
-
-			count++;
+		todos.forEach((todo, idx) => {
+			const el = listEl.children[idx] || document.createElement('li');
 
 			if (el.todo !== todo) {
 				el.todo = todo;
@@ -127,7 +127,7 @@
 			}
 		});
 
-		for (let i = listEl.children.length; i > count; i--) {
+		for (let i = listEl.children.length; i > todos.length; i--) {
 			listEl.removeChild(listEl.children[i-1]);
 		}
 
@@ -137,7 +137,7 @@
 	console.time('push');
 	for (let i = 0; i < 1e1; i++) {
 		todosStorage.push(new rdot.Model({
-			value: 'foo',
+			value: 'foo #' + (i+1),
 			completed: false
 		}));
 	}
