@@ -8,78 +8,6 @@ type ReactiveSetter<T> = (currentValue?:T, previousValue?:T) => T;
 type ReactiveOnValueListener<T> = (currentValue?:T, previousValue?:T) => void;
 type ReactiveCombinator<T> = (dots:Array<T>) => ReactiveDot<T>;
 
-export interface IReactiveDotFactory {
-	<T>(value?:T, setter?:ReactiveSetter<T>): ReactiveDot<T>;
-	<T>(value?:T, options?:ReactiveOptions<T>): ReactiveDot<T>;
-	<T>(getter?:ReactiveGetter<T>, setter?:ReactiveSetter<T>): ReactiveDot<T>;
-	<T>(getter?:ReactiveGetter<T>, options?:ReactiveOptions<T>): ReactiveDot<T>;
-
-	/** Extend `rdot` methods */
-	extend?(methods:any):void;
-
-	forceCompute?(dot:ReactiveDot<any>):void;
-
-	/** Create a reactive dot and bind it with HTMLElement */
-	dom?(element:HTMLInputElement):ReactiveDom;
-
-	fromEvent?<T extends Event>(element:HTMLElement, eventName:string):ReactiveDot<T>;
-
-	/** Combines two or more dots together */
-	combine?<T, R>(dots:Array<T>, combinator?:ReactiveCombinator<T>):ReactiveDot<R>;
-}
-
-/** Reactive value containter */
-export interface ReactiveDot<T> {AKS
-	/** readonly */
-	id: number;
-
-	/** readonly */
-	constant: boolean;
-
-	/** Last calculated reactive value. readonly. */
-	value: T;
-
-	/** Get current reactive value */
-	(): T;
-
-	/** Get current reactive value */
-	get(): T;
-
-	/** Set new reactive value or getter */
-	set(value:T): ReactiveDot<T>;
-	set(getter:ReactiveGetter<T>): ReactiveDot<T>;
-
-	/** Subscribe to changes on reactive value */
-	onValue(callback:ReactiveOnValueListener<T>): ReactiveDot<T>;
-
-	valueOf(): T;
-	toString(): string;
-}
-
-/** Reactive DOM Element */
-export interface ReactiveDom extends ReactiveDot<string> {
-	el?: HTMLElement;
-	handle?(evt?:Event): void;
-}
-
-/** Private */
-export interface ReactiveDotPrivate<T> extends ReactiveDot<T> {
-	tick: number;
-	interactive: boolean;
-	revision?: number;
-	options: ReactiveOptions<T>;
-	onValueListeners?: ReactiveOnValueListener<T>[];
-
-	getter: ReactiveGetter<T>;
-	staticValue: T;
-
-	linked: ReactiveDotPrivate<T>[];
-	linkedExists: ReactiveDotExists;
-
-	dependsOn: ReactiveDotPrivate<T>[];
-	dependsOnExists: ReactiveDotExists;
-}
-
 export interface ReactiveOptions<T> {
 	initialCall?: boolean;
 	sync?: boolean;
@@ -94,8 +22,8 @@ interface ReactiveDotExists {
 
 /** Global incremetal id */
 let gid:number = 0;
-let _activeDot:ReactiveDotPrivate<any> = void 0;
-let _queue:ReactiveDotPrivate<any>[] = [];
+let _activeDot:ReactiveDot<any> = void 0;
+let _queue:ReactiveDot<any>[] = [];
 let _queueExists:ReactiveDotExists = {};
 
 let _revision:number = 0;
@@ -103,7 +31,7 @@ let _computing:number = void 0;
 
 const defaultOptions:ReactiveOptions<any> = {};
 
-function _add2Queue(dot:ReactiveDotPrivate<any>, compute?:boolean) {
+function _add2Queue(dot:ReactiveDot<any>, compute?:boolean) {
 	if (_queueExists[dot.id] === void 0) {
 		dot.revision = null;
 		_queue.push(dot);
@@ -133,11 +61,20 @@ function _computingAll() {
 			let linked = dot.linked;
 
 			// computing
-			dot();
+			dot.get();
 
 			if (linked) {
-				for (let i = 0; i < linked.length; i++) {
-					_add2Queue(linked[i]);
+				const length = linked.length;
+
+				if (length > 0) {
+					if (length <= 2) {
+						_add2Queue(linked[0]);
+						(length === 2) && _add2Queue(linked[1]);
+					} else {
+						for (let i = 0; i < length; i++) {
+							_add2Queue(linked[i]);
+						}
+					}
 				}
 			}
 
@@ -151,66 +88,112 @@ function _computingAll() {
 }
 
 
-// Constructor
-const rdot:IReactiveDotFactory = <T>(value?, opts?):ReactiveDot<T> => {
-	let options:ReactiveOptions<T> = opts;
+class ReactiveDot<T> {
+	/** Local identifier. readonly. */
+	public id:number;
 
-	if (opts === void 0) {
-		options = defaultOptions;
+	/** Type of value. readonly. */
+	public constant:boolean;
+
+	/** Last calculated reactive value. readonly. */
+	public value:T;
+
+	public options:ReactiveOptions<T>;
+	private staticValue:T;
+	private getter:Function;
+
+	public linked:ReactiveDot<any>[];
+	public linkedExists:Object; // todo: MapInterface
+
+	private dependsOn:ReactiveDot<any>[];
+	private dependsOnExists:Object; // todo: MapInterface
+
+	public tick = 0;
+	public revision:number;
+	public onValueListeners:ReactiveOnValueListener<T>[];
+	public interactive:boolean;
+
+	constructor(value?:T, setter?:ReactiveSetter<T>);
+	constructor(value?:T, options?:ReactiveOptions<T>);
+	constructor(getter?:ReactiveGetter<T>, setter?:ReactiveSetter<T>);
+	constructor(getter?:ReactiveGetter<T>, options?:ReactiveOptions<T>);
+	constructor(value?, opts?) {
+		let options:ReactiveOptions<T> = opts;
+
+		if (opts === void 0) {
+			options = defaultOptions;
+		}
+
+		if (typeof opts === 'function') {
+			options = {setter: opts};
+		}
+
+		this.id = ++gid;
+		this.options = options;
+		this.constant = typeof value !== 'function';
+
+		if (this.constant) {
+			this.staticValue = value;
+		} else {
+			this.getter = value;
+		}
+
+		this.linked = [];
+		this.linkedExists = {};
+
+		this.dependsOn = [];
+		this.dependsOnExists = {};
 	}
 
-	if (typeof opts === 'function') {
-		options = {setter: opts};
-	}
-
-	let _setter:ReactiveSetter<T> = options.setter;
-
-	let dot:ReactiveDotPrivate<T> = <ReactiveDotPrivate<T>>function reactiveDot() {
+	/** Get current reactive value */
+	get():T {
 		if (_computing !== void 0 && _computing !== -1) {
 			_computingAll();
 		}
 
-		let currentValue:T = dot.value;
+		let currentValue:T = this.value;
 		let previousValue:T = currentValue;
-		let previousActiveDot:ReactiveDotPrivate<T> = _activeDot;
+		let previousActiveDot:ReactiveDot<any> = _activeDot;
 		let changed:boolean;
 
 		if (_activeDot !== void 0) {
-			if (dot.linkedExists[_activeDot.id] === void 0) {
-				dot.linkedExists[_activeDot.id] = 1;
-				dot.linked.push(_activeDot);
+			if (this.linkedExists[_activeDot.id] === void 0) {
+				this.linkedExists[_activeDot.id] = 1;
+				this.linked.push(_activeDot);
 
-				_activeDot.dependsOn.push(dot);
+				_activeDot.dependsOn.push(this);
 			}
 
-			_activeDot.dependsOnExists[dot.id] = _activeDot.tick;
+			_activeDot.dependsOnExists[this.id] = _activeDot.tick;
 			//console.log('setTick.dot: %d, prev: %d, active: %d', dot.id, dependsOnTick, _activeDot.tick);
 		}
 
 		// Значение устарело, требуется перерасчет
-		if (dot.revision !== _revision) {
+		if (this.revision !== _revision) {
+			const options = this.options;
+			const _setter = options.setter;
 			//console.log('dot: %d, tick: %d, rev: %d (new: %d)', dot.id, dot.tick, dot.revision, _revision);
 
-			if (!dot.interactive) {
+			if (!this.interactive) {
 				// Переводим в интерактивное состояние
-				dot.interactive = true;
-				options.setup && options.setup.call(dot);
+				this.interactive = true;
+				options.setup && options.setup.call(this);
 
-				if (dot.revision === _revision) {
+				if (this.revision === _revision) {
 					// Похоже в setup, уже вычеслили значение
-					return dot.value;
+					return this.value;
 				}
 			}
 
-			dot.tick++;
-			dot.revision = _revision;
+			this.tick++;
+			this.revision = _revision;
 
 			// Computing value
 			//console.log('getter.dot: %d, rev: %d, tick: %d', dot.id, _revision, dot.tick);
 			//noinspection JSUnusedAssignment
-			_activeDot = dot;
+			_activeDot = this;
 
-			currentValue = dot.constant ? dot.staticValue : dot.getter(dot);
+			currentValue = this.constant ? this.staticValue : this.getter(this);
 
 			_activeDot = previousActiveDot;
 
@@ -220,20 +203,20 @@ const rdot:IReactiveDotFactory = <T>(value?, opts?):ReactiveDot<T> => {
 
 			changed = previousValue !== currentValue;
 
-			dot.value = currentValue;
+			this.value = currentValue;
 
 			if (changed) {
-				_notify(dot, currentValue, previousValue);
+				_notify(this, currentValue, previousValue);
 			}
 
 			// Проверяем точки, от которых мы зависим
-			let dependsOn = dot.dependsOn;
-			let dependsOnExists = dot.dependsOnExists;
+			let dependsOn = this.dependsOn;
+			let dependsOnExists = this.dependsOnExists;
 			let idx = dependsOn.length;
 
 			if (idx !== 0) {
 				let depDot;
-				let tick = dot.tick;
+				let tick = this.tick;
 				//console.log('dependsOn.check: %d, tick: %d', dot.id, dot.tick);
 
 				while (idx--) {
@@ -242,103 +225,143 @@ const rdot:IReactiveDotFactory = <T>(value?, opts?):ReactiveDot<T> => {
 
 					if (dependsOnExists[depDot.id] !== tick) {
 						//console.warn('unlink.dot: %d, from.dot: %d', dot.id, depDot.id);
-						_unlink(depDot, dot);
+						_unlink(depDot, this);
 					}
 				}
 			}
 		}
 
-
 		return currentValue;
-	};
-
-	// Extending hack
-	//for (let key in rdot['fn']) {
-	//	dot[key] = rdot['fn'][key];
-	//}
-
-	// Readonly private props
-	dot.id = ++gid;
-	dot.options = options;
-
-	dot.constant = typeof value !== 'function';
-
-	if (dot.constant) {
-		dot.staticValue = value;
-	} else {
-		dot.getter = value;
 	}
 
-	dot.linked = [];
-	dot.linkedExists = {};
+	/** Set new reactive value or getter */
+	set(value:T): ReactiveDot<T>;
+	set(getter:ReactiveGetter<T>): ReactiveDot<T>;
+	set(getter) {
+		this.constant = typeof getter !== 'function';
 
-	dot.dependsOn = [];
-	dot.dependsOnExists = {};
+		if (this.constant) {
+			this.staticValue = getter;
+		} else {
+			this.getter = getter;
+		}
 
-	return <ReactiveDot<T>>dot;
-};
+		_add2Queue(this, true);
 
-// METHODS
-rdot['fn'] = {};
-rdot.extend = function (methods:any) {
-	for (let key in methods) {
-		rdot['fn'][key] = methods[key];
+		return this;
 	}
-};
 
-rdot.extend({
-	tick: 0,
-
-	get() {
-		return this();
-	},
-
-	set(value) {
-		const dot:ReactiveDotPrivate<any> = this;
-
-		dot.constant = typeof value !== 'function';
-
-		if (dot.constant) {
-			dot.staticValue = value;
+	/** Subscribe to changes on reactive value */
+	onValue(callback:ReactiveOnValueListener<any>, initialCall?:boolean) {
+		if (initialCall !== false && this.options.initialCall !== false) {
+			callback(this.get());
 		} else {
-			dot.getter = value;
+			this.get(); // Init
 		}
 
-		_add2Queue(dot, true);
-
-		return dot;
-	},
-
-	onValue(callback:ReactiveOnValueListener<any>, initialCall:boolean) {
-		const dot:ReactiveDotPrivate<any> = this;
-
-		if (initialCall !== false && dot.options.initialCall !== false) {
-			callback(dot());
+		if (this.onValueListeners === void 0) {
+			this.onValueListeners = [callback];
 		} else {
-			dot(); // Init
+			this.onValueListeners.push(callback);
 		}
 
-		if (dot.onValueListeners === void 0) {
-			dot.onValueListeners = [callback];
-		} else {
-			dot.onValueListeners.push(callback);
-		}
-
-		return dot;
-	},
-
-	valueOf() {
-		return <ReactiveDotPrivate<any>>this();
-	},
-
-	toString() {
-		return <ReactiveDotPrivate<any>>this() + '';
+		return this;
 	}
-});
+
+	valueOf():T {
+		return this.get();
+	}
+
+	toString():string {
+		return this.get() + '';
+	}
+
+	forceCompute():void {
+		this.value = void 0; // clear value
+		_add2Queue(this, true);
+	}
+
+	/** Create a reactive dot and bind it with HTMLElement */
+	static dom(el:HTMLInputElement):ReactiveDom {
+		return new ReactiveDom(el);
+	}
+
+	static fromEvent<T extends Event>(el:HTMLElement, eventName:string):ReactiveDot<T> {
+		let dot = new ReactiveDot<T>(new Event(eventName) as T, {
+			setup() {
+				this.handle = (evt) => this.set(evt);
+				el.addEventListener(eventName, this.handle);
+			},
+
+			teardown() {
+				el.removeEventListener(eventName, this.handle);
+				this.handle = null;
+			}
+		});
+
+		dot.get(); // setup
+
+		return dot as ReactiveDot<T>;
+	}
+
+	/** Combines two or more dots together */
+	static combine<T, R>(dots:Array<T>, combinator?:ReactiveCombinator<T>):ReactiveDot<R> {
+		const length:number = dots.length;
+
+		return new ReactiveDot<R>(() => {
+			let dot;
+			let idx:number = length;
+			let results:Array<any> = new Array(length);
+
+			while (idx--) {
+				dot = dots[idx];
+				results[idx] = dot ? (dot.get ? dot.get() : (dot.onValue ? dot() : dot)) : dot;
+			}
+
+			return combinator ? combinator.apply(null, results) : results;
+		});
+	}
+}
+
+class ReactiveDom extends ReactiveDot<string> {
+	public el:HTMLInputElement;
+
+	constructor(el:HTMLInputElement) {
+		super(el.value, {
+			setup: () => {
+				//noinspection JSUnusedAssignment
+				el.addEventListener('input', this, false);
+			},
+
+			teardown: () => {
+				//noinspection JSUnusedAssignment
+				this.set(el.value);
+
+				//noinspection JSUnusedAssignment
+				el.removeEventListener('input', this, false);
+			},
+
+			setter: (newValue:string): string => {
+				if (el.value !== newValue) {
+					el.value = newValue;
+				}
+
+				return newValue;
+			}
+		});
+
+		this.el = el;
+		this.get();
+	}
+
+	handleEvent() {
+		this.set(this.el.value);
+	}
+}
 
 
 /** Unlink `dot`. private. */
-function _unlink(target:ReactiveDotPrivate<any>, dot:ReactiveDotPrivate<any>) {
+function _unlink(target:ReactiveDot<any>, dot:ReactiveDot<any>) {
 	const linked = target.linked;
 	const _linked = target.linkedExists;
 
@@ -357,7 +380,7 @@ function _unlink(target:ReactiveDotPrivate<any>, dot:ReactiveDotPrivate<any>) {
 }
 
 /** Notify linked dots about the changes */
-function _notify(dot:ReactiveDotPrivate<any>, currentValue:any, previousValue:any) {
+function _notify(dot:ReactiveDot<any>, currentValue:any, previousValue:any) {
 	const listeners = dot.onValueListeners;
 
 	if (listeners !== void 0) {
@@ -371,77 +394,6 @@ function _notify(dot:ReactiveDotPrivate<any>, currentValue:any, previousValue:an
 	}
 }
 
-rdot.forceCompute = (dot:ReactiveDot<any>):void => {
-	dot.value = void 0; // clear value
-	_add2Queue(dot as ReactiveDotPrivate<any>, true);
-};
-
-rdot.dom = (el:HTMLInputElement):ReactiveDom => {
-	const dot:ReactiveDom = rdot<string>(el.value, {
-		setup() {
-			//noinspection JSUnusedAssignment
-			el.addEventListener('input', dot.handle);
-		},
-
-		teardown(): void {
-			//noinspection JSUnusedAssignment
-			dot.set(el.value);
-
-			//noinspection JSUnusedAssignment
-			el.removeEventListener('input', dot.handle);
-		},
-
-		setter(newValue:string): string {
-			if (el.value !== newValue) {
-				el.value = newValue;
-			}
-
-			return newValue;
-		}
-	});
-
-	dot.el = el;
-	dot.handle = () => dot.set(el.value);
-
-	dot();
-
-	return dot;
-};
-
-rdot.fromEvent = <T extends Event>(el:HTMLElement, eventName:string):ReactiveDot<T> => {
-	let dot = rdot(new Event(eventName) as T, {
-		setup() {
-			this.handle = (evt) => this.set(evt);
-			el.addEventListener(eventName, this.handle);
-		},
-
-		teardown() {
-			el.removeEventListener(eventName, this.handle);
-			this.handle = null;
-		}
-	});
-
-	dot(); // setup
-
-	return dot as ReactiveDot<T>;
-};
-
-rdot.combine = <T, R>(dots:Array<T>, combinator?:ReactiveCombinator<T>):ReactiveDot<R> => {
-	const length:number = dots.length;
-
-	return rdot<R>(() => {
-		let dot;
-		let idx:number = length;
-		let results:Array<any> = new Array(length);
-
-		while (idx--) {
-			dot = dots[idx];
-			results[idx] = dot ? (dot.get ? dot.get() : (dot.onValue ? dot() : dot)) : dot;
-		}
-
-		return combinator ? combinator.apply(null, results) : results;
-	});
-};
 
 // Export
-export default rdot;
+export default ReactiveDot;
