@@ -29,6 +29,7 @@ let _queueExists:ReactiveDotExists = {};
 let _revision:number = 0;
 let _computing:number = void 0;
 
+const setImmediate = window.setImmediate || window.setTimeout;
 const defaultOptions:ReactiveOptions<any> = {};
 
 function _add2Queue(dot:ReactiveDot<any>, compute?:boolean) {
@@ -44,7 +45,7 @@ function _add2Queue(dot:ReactiveDot<any>, compute?:boolean) {
 			_computingAll();
 		}
 		else {
-			_computing = setTimeout(_computingAll, 0);
+			_computing = setImmediate(_computingAll);
 		}
 	}
 }
@@ -224,7 +225,6 @@ class ReactiveDot<T> {
 					//console.log('dependsOn.id: %d, cur.tick: %d, eq.tick: %d', depDot.id, _dependsOn[depDot.id], tick);
 
 					if (dependsOnExists[depDot.id] !== tick) {
-						//console.warn('unlink.dot: %d, from.dot: %d', dot.id, depDot.id);
 						_unlink(depDot, this);
 					}
 				}
@@ -266,6 +266,14 @@ class ReactiveDot<T> {
 		}
 
 		return this;
+	}
+
+	dispose():void {
+		this.linked = [];
+		this.linkedExists = {};
+		this.dependsOn = [];
+		this.dependsOnExists = {};
+		this.onValueListeners = [];
 	}
 
 	valueOf():T {
@@ -363,17 +371,21 @@ class ReactiveDom extends ReactiveDot<string> {
 /** Unlink `dot`. private. */
 function _unlink(target:ReactiveDot<any>, dot:ReactiveDot<any>) {
 	const linked = target.linked;
-	const _linked = target.linkedExists;
+	const idx = linked.indexOf(dot);
 
-	linked.splice(linked.indexOf(dot), 1);
-	delete _linked[dot.id];
+	if (idx > -1) { // todo: в mvc тесте при allChecked возвпроизводиться стабильно
+		//console.warn('unlink.dot: %d (idx: %d), from.dot: %d', dot.id, idx, target.id);
 
-	if (linked.length === 0) {
-		if (dot.interactive === true) {
-			dot.interactive = false;
+		linked.splice(idx, 1);
+		delete target.linkedExists[dot.id];
 
-			if (dot.options.teardown !== void 0) {
-				dot.options.teardown.call(dot);
+		if (linked.length === 0) {
+			if (dot.interactive === true) {
+				dot.interactive = false;
+
+				if (dot.options.teardown !== void 0) {
+					dot.options.teardown.call(dot);
+				}
 			}
 		}
 	}

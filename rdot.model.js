@@ -19,7 +19,7 @@
 
 			for (let key in attrs) {
 				this[key] = rdot(attrs[key]);
-				this[key]();
+				this[key].get();
 
 				this[key].onValue(() => {
 					rdot.forceCompute(this.onChange);

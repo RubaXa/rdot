@@ -13,16 +13,15 @@
 })((rdot) => {
 	'use strict';
 
-	rdot.extend({
-		map(fn) {
-			return rdot(() => fn(this(), this));
-		},
+	rdot.prototype.map = function map(fn) {
+		return new rdot(() => fn(this.get(), this));
+	};
 
-		filter(fn) {
+	rdot.prototype.filter = function filter(fn) {
 			let retVal;
 
-			return rdot(() => {
-				const val = this();
+			return new rdot(() => {
+				const val = this.get();
 
 				if (fn(val)) {
 					retVal = val;
@@ -32,73 +31,72 @@
 			}, {
 				initialCall: false
 			});
-		},
+	};
 
-		throttle(msec) {
-			let pid;
-			let lock = false;
-			let retVal;
-			const apply = () => {
-				pid = null;
-				lock = true;
-				dot.obsolete = true;
-				dot();
-				lock = false;
-			};
+	rdot.prototype.throttle = function throttle(msec) {
+		let pid;
+		let lock = false;
+		let retVal;
+		const apply = () => {
+			pid = null;
+			lock = true;
+			dot.obsolete = true;
+			dot();
+			lock = false;
+		};
 
-			const dot = rdot(() => {
-				if (!pid) {
-					retVal = this();
-					!lock && (pid = setTimeout(apply, msec));
-				}
-
-				return retVal;
-			});
-
-			return dot;
-		},
-
-		not() {
-			return rdot(() => !this());
-		},
-
-		assign(target, prop) {
-			if (!prop && target.nodeType === 1) {
-				prop = 'textContent';
+		const dot = new rdot(() => {
+			if (!pid) {
+				retVal = this.get();
+				!lock && (pid = setTimeout(apply, msec));
 			}
 
-			this.onValue(val => {
-				target[prop] = val;
-			});
+			return retVal;
+		});
 
-			return this;
-		},
+		return dot;
+	};
 
-		arrayFilter(fn) {
-			const dot = rdot(() => {
-				const data = fn(this());
-				const prev = dot.__arrayFilter || [];
-				const filtered = [];
-				const array = data.array;
-				const callback = data.callback;
+	rdot.prototype.not = function not() {
+		return new rdot(() => !this.get());
+	};
 
-				let changed = false;
-
-				for (let i = 0, n = array.length; i < n; i++) {
-					if (callback(array[i], i, array)) {
-						filtered.push(array[i]);
-						changed = changed || array[i] !== prev[i];
-					} else {
-						changed = true;
-					}
-				}
-
-				dot.__arrayFilter = (changed ? filtered : dot.__arrayFilter || array.slice(0));
-
-				return changed && (array.length !== filtered.length) ? filtered : array;
-			});
-
-			return dot;
+	rdot.prototype.assign = function assign(target, prop) {
+		if (!prop && target.nodeType === 1) {
+			prop = 'textContent';
 		}
-	});
+
+		this.onValue(val => {
+			target[prop] = val;
+		});
+
+		return this;
+	};
+
+	rdot.prototype.arrayFilter = function arrayFilter(fn) {
+		const dot = new rdot(() => {
+			const data = fn(this.get());
+			const prev = dot.__arrayFilter || [];
+			const filtered = [];
+			const array = data.array;
+			const callback = data.callback;
+
+			let changed = false;
+
+			for (let i = 0, n = array.length; i < n; i++) {
+				if (callback(array[i], i, array)) {
+					filtered.push(array[i]);
+					changed = changed || array[i] !== prev[i];
+				} else {
+					changed = true;
+				}
+			}
+
+			dot.__arrayFilter = (changed ? filtered : dot.__arrayFilter || array.slice(0));
+
+			return changed && (array.length !== filtered.length) ? filtered : array;
+		});
+
+		return dot;
+	};
 });
