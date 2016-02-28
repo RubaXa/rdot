@@ -235,8 +235,8 @@ class ReactiveDot<T> {
 	}
 
 	/** Set new reactive value or getter */
-	set(value:T): ReactiveDot<T>;
-	set(getter:ReactiveGetter<T>): ReactiveDot<T>;
+	set(value:T):ReactiveDot<T>;
+	set(getter:ReactiveGetter<T>):ReactiveDot<T>;
 	set(getter) {
 		this.constant = typeof getter !== 'function';
 
@@ -284,9 +284,96 @@ class ReactiveDot<T> {
 		return this.get() + '';
 	}
 
-	forceCompute():void {
+	forceCompute() {
 		this.value = void 0; // clear value
 		_add2Queue(this, true);
+	}
+
+	map<R extends T>(fn:Function):ReactiveDot<R> {
+		return new ReactiveDot<R>(() => fn(this.get(), this));
+	}
+
+	filter<R extends T>(fn:Function):ReactiveDot<R> {
+		let retVal;
+
+		return new ReactiveDot<R>(() => {
+			const val = this.get();
+
+			if (fn(val)) {
+				retVal = val;
+			}
+
+			return retVal;
+		}, {
+			initialCall: false
+		});
+	}
+
+	throttle(msec:number):ReactiveDot<T> {
+		let pid;
+		let lock = false;
+		let retVal;
+		const apply = () => {
+			pid = null;
+			lock = true;
+			dot.forceCompute();
+			dot.get();
+			lock = false;
+		};
+
+		const dot = new ReactiveDot<T>(() => {
+			if (!pid) {
+				retVal = this.get();
+				!lock && (pid = setTimeout(apply, msec));
+			}
+
+			return retVal;
+		});
+
+		return dot;
+	}
+
+	not():ReactiveDot<boolean> {
+		return new ReactiveDot<boolean>(() => !this.get());
+	}
+
+	assign(target:HTMLElement, prop:string):this {
+		if (!prop && target.nodeType === 1) {
+			prop = 'textContent';
+		}
+
+		this.onValue(val => {
+			target[prop] = val;
+		});
+
+		return this;
+	}
+
+	arrayFilter(fn:Function):ReactiveDot<any[]> {
+		const dot = new ReactiveDot<any[]>(() => {
+			const data = fn(this.get());
+			const prev = dot['__arrayFilter'] || [];
+			const filtered = [];
+			const array:any[] = data.array;
+			const callback:Function = data.callback;
+
+			let changed = false;
+
+			for (let i = 0, n = array.length; i < n; i++) {
+				if (callback(array[i], i, array)) {
+					filtered.push(array[i]);
+					changed = changed || array[i] !== prev[i];
+				} else {
+					changed = true;
+				}
+			}
+
+			dot['__arrayFilter'] = (changed ? filtered : dot['__arrayFilter'] || array.slice(0));
+
+			return changed && (array.length !== filtered.length) ? filtered : array;
+		});
+
+		return dot;
 	}
 
 	/** Create a reactive dot and bind it with HTMLElement */
@@ -294,7 +381,7 @@ class ReactiveDot<T> {
 		return new ReactiveDom(el);
 	}
 
-	static fromEvent<T extends Event>(el:HTMLElement, eventName:string):ReactiveDot<T> {
+	static fromEvent<T extends Event>(el:Element, eventName:string):ReactiveDot<T> {
 		let dot = new ReactiveDot<T>(new Event(eventName) as T, {
 			setup() {
 				this.handle = (evt) => this.set(evt);
@@ -337,19 +424,15 @@ class ReactiveDom extends ReactiveDot<string> {
 	constructor(el:HTMLInputElement) {
 		super(el.value, {
 			setup: () => {
-				//noinspection JSUnusedAssignment
 				el.addEventListener('input', this, false);
 			},
 
 			teardown: () => {
-				//noinspection JSUnusedAssignment
 				this.set(el.value);
-
-				//noinspection JSUnusedAssignment
 				el.removeEventListener('input', this, false);
 			},
 
-			setter: (newValue:string): string => {
+			setter: (newValue:string):string => {
 				if (el.value !== newValue) {
 					el.value = newValue;
 				}
@@ -406,6 +489,79 @@ function _notify(dot:ReactiveDot<any>, currentValue:any, previousValue:any) {
 	}
 }
 
+function reactiveDecorator(depends:any[], initFn?:Function);
+function reactiveDecorator(target:any, propertyName:string, descriptor?:TypedPropertyDescriptor<any>);
+function reactiveDecorator(target, propertyName?, descriptor?) {
+	if (target instanceof Array) {
+		const depends = target;
+		const length = depends.length;
+		const initFn = propertyName;
+
+		return function (target:any, propertyName:string, descriptor:TypedPropertyDescriptor<any>) {
+			const privateName = `__rdot:${propertyName}`;
+			const propertyValue = target[propertyName];
+			const isFunction = typeof propertyValue === 'function';
+
+			descriptor.get = function () {
+				let dot = this[privateName];
+
+				if (dot === void 0) {
+					dot = new rdot(() => {
+						const values = new Array(length);
+
+						if (length <= 3) {
+							values[0] = this[depends[0]];
+							(length === 2) && (values[1] = this[depends[1]]);
+							(length === 3) && (values[2] = this[depends[2]]);
+						} else {
+							for (let i = 0; i < length; i++) {
+								values[i] = this[depends[i]];
+							}
+						}
+
+						return values;
+					});
+
+					dot = initFn ? initFn(dot) : dot;
+
+					if (isFunction) {
+						dot.onValue(val => propertyValue.call(this, val));
+					}
+				}
+
+				if (isFunction) {
+					return propertyValue;
+				} else {
+					return dot.get();
+				}
+			};
+
+			descriptor.set = function () {
+				console.warn(`${propertyName} — readonly`);
+			};
+		};
+	} else {
+		const privateName = `__rdot:${propertyName}`;
+
+		descriptor.get = function () {
+			let dot = this[privateName];
+			return dot !== void 0 && dot.get();
+		};
+
+		descriptor.set = function (value) {
+			let dot = this[privateName];
+
+			if (dot === void 0) {
+				this[privateName] = new rdot(value);
+			} else {
+				dot.set(value);
+			}
+		};
+	}
+}
+
 
 // Export
 export default ReactiveDot;
+export const rdot = ReactiveDot;
+export const reactive = reactiveDecorator;
