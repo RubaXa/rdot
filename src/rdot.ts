@@ -489,74 +489,90 @@ function _notify(dot:ReactiveDot<any>, currentValue:any, previousValue:any) {
 	}
 }
 
+function setGetSet(target:any, propertyName:string, getter:()=>any, setter:(value:any)=>void) {
+	Object.defineProperty(target, propertyName, {
+		get: getter,
+		set: setter,
+		enumerable: true
+	});
+}
+
 function reactiveDecorator(depends:any[], initFn?:Function);
-function reactiveDecorator(target:any, propertyName:string, descriptor?:TypedPropertyDescriptor<any>);
-function reactiveDecorator(target, propertyName?, descriptor?) {
+function reactiveDecorator(target:any, propertyName:string);
+function reactiveDecorator(target, propertyName?) {
 	if (target instanceof Array) {
 		const depends = target;
 		const length = depends.length;
 		const initFn = propertyName;
 
-		return function (target:any, propertyName:string, descriptor:TypedPropertyDescriptor<any>) {
+		return function (target:any, propertyName:string) {
 			const privateName = `__rdot:${propertyName}`;
 			const propertyValue = target[propertyName];
 			const isFunction = typeof propertyValue === 'function';
 
-			descriptor.get = function () {
-				let dot = this[privateName];
+			setGetSet(target, propertyName,
+				// Getter
+				function () {
+					let dot = this[privateName];
 
-				if (dot === void 0) {
-					dot = new rdot(() => {
-						const values = new Array(length);
+					if (dot === void 0) {
+						dot = new rdot(() => {
+							const values = new Array(length);
 
-						if (length <= 3) {
-							values[0] = this[depends[0]];
-							(length === 2) && (values[1] = this[depends[1]]);
-							(length === 3) && (values[2] = this[depends[2]]);
-						} else {
-							for (let i = 0; i < length; i++) {
-								values[i] = this[depends[i]];
+							if (length <= 3) {
+								values[0] = this[depends[0]];
+								(length === 2) && (values[1] = this[depends[1]]);
+								(length === 3) && (values[2] = this[depends[2]]);
+							} else {
+								for (let i = 0; i < length; i++) {
+									values[i] = this[depends[i]];
+								}
 							}
+
+							return values;
+						});
+
+						dot = initFn ? initFn(dot) : dot;
+
+						if (isFunction) {
+							dot.onValue(val => propertyValue.call(this, val));
 						}
-
-						return values;
-					});
-
-					dot = initFn ? initFn(dot) : dot;
+					}
 
 					if (isFunction) {
-						dot.onValue(val => propertyValue.call(this, val));
+						return propertyValue;
+					} else {
+						return dot.get();
 					}
-				}
+				},
 
-				if (isFunction) {
-					return propertyValue;
-				} else {
-					return dot.get();
+				// Setter
+				function () {
+					console.warn(`${propertyName} — readonly`);
 				}
-			};
-
-			descriptor.set = function () {
-				console.warn(`${propertyName} — readonly`);
-			};
+			);
 		};
 	} else {
 		const privateName = `__rdot:${propertyName}`;
 
-		descriptor.get = function () {
-			let dot = this[privateName];
-			return dot !== void 0 && dot.get();
-		};
+		setGetSet(target, propertyName,
+			// Getter
+			function () {
+				let dot = this[privateName];
+				return dot !== void 0 && dot.get();
+			},
 
-		descriptor.set = function (value) {
-			let dot = this[privateName];
+			// Setter
+			function (value) {
+				let dot = this[privateName];
 
-			if (dot === void 0) {
-				this[privateName] = new rdot(value);
-			} else {
-				dot.set(value);
+				if (dot === void 0) {
+					this[privateName] = new rdot(value);
+				} else {
+					dot.set(value);
+				}
 			}
-		};
+		);
 	}
 }
 
