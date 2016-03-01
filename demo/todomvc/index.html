@@ -2,72 +2,39 @@
 <html>
 <head>
 	<meta charset="utf-8"/>
-	<title>Reactive Dot</title>
+	<title>Reactive Dot :: TodoMVC</title>
 
 	<link rel="stylesheet" href="http://todomvc.com/examples/vanillajs/node_modules/todomvc-common/base.css">
 	<link rel="stylesheet" href="http://todomvc.com/examples/vanillajs/node_modules/todomvc-app-css/index.css">
 </head>
 <body>
 
-<!--section class="todoapp">
-	<header class="header">
-		<h1>todos</h1>
-		<input class="new-todo" placeholder="What needs to be done?" autofocus>
-	</header>
+	<div id="app-canvas"></div>
 
-	<section class="main">
-		<input id="toggle-all" class="toggle-all" type="checkbox">
-		<label for="toggle-all">Mark all as complete</label>
-		<ul class="todo-list"></ul>
-	</section>
-
-	<footer class="footer">
-		<span class="todo-count"></span>
-		<ul class="filters">
-			<li><a href="#/">All</a></li>
-			<li><a href="#/active">Active</a></li>
-			<li><a href="#/completed">Completed</a></li>
-		</ul>
-		<button class="clear-completed">Clear completed</button>
+	<footer class="info">
+		<p>Double-click to edit a todo</p>
+		<p>Created by <a href="http://twitter.com/ibnRubaXa">RubaXa</a></p>
+		<p>Part of <a href="http://todomvc.com">TodoMVC</a></p>
 	</footer>
-</section-->
 
-<div id="app-canvas"></div>
+	<script src="https://jspm.io/system@0.19.js"></script>
+	<script>
+		System.config({
+			map: {
+				'citojs': 'http://local.git/feast/vendor/cito.js',
+				'todomvc': '../../dist/demo/todomvc/index'
+			},
+			packages: {
+				'': {
+					defaultExtension: 'js'
+				}
+			}
+		});
 
-<footer class="info">
-	<p>Double-click to edit a todo</p>
-	<p>Created by <a href="http://twitter.com/ibnRubaXa">RubaXa</a></p>
-	<p>Part of <a href="http://todomvc.com">TodoMVC</a></p>
-</footer>
-
-<script src="http://local.git/feast/vendor/cito.js"></script>
-
-<script>
-	var module = {exports: {}};
-	var exports = module.exports;
-	var require;
-</script>
-<script src="http://local.git/rdot/src/rdot.js"></script>
-<script>
-	window.rdot = module.exports['default'];
-	module = exports = void 0;
-</script>
-
-<script src="http://local.git/rdot/rdot.prp.js"></script>
-<!--script src="../../rdot.model.js"></script-->
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-core/5.8.32/browser.min.js"></script>
-<script src="app2.js"></script>
-
-<script>
-//fetch('./app2.js')
-//	.then(function (res) { return res.text(); })
-//	.then(function (code) {
-//		babel.run(code);
-		var app = renderTo(TodoApp, window['app-canvas']);
-//	})
-//;
-</script>
+		System.import('todomvc').then(function (boot) {
+			boot['default'](window['app-canvas']);
+		});
+	</script>
 
 </body>
 </html>

@@ -34,5 +34,5 @@ export function filterByCompleted(dot) {
 }
 
 export function isAllCompleted(dot) {
-	return dot.map(([activeTodos, todos]) => !(activeTodos as Task[]).length && (todos as Task[]).length);
+	return dot.map(([filteredTodos]) => filteredTodos.length && filteredTodos.every(todo => todo.completed));
 }
