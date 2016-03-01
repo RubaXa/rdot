@@ -12,7 +12,7 @@
   "author": "RubaXa <trash@rubaxa.org>",
   "license": "MIT",
   "dependencies": {
-    "eslint": "^1.10.3",
-    "eslint-config-airbnb": "^3.1.0"
+  },
+  "devDependencies": {
   }
 }
