@@ -4,24 +4,27 @@ import {STORE_NAME, ENTER_KEY} from './const';
 import {getHash, loadTodos, saveTodos, filterByHash, filterByCompleted, isAllCompleted} from './utils';
 
 export default class TodoApp {
-	@reactive
-	public newTodo:string = '';
-
+	// Фильтр задач
 	@reactive
 	public filter:string = getHash();
 
+	// Список всех задач
 	@reactive
 	public todos:Task[] = loadTodos();
 
+	// Текущий список задач в зависипости от фильтра
 	@reactive(['filter', 'todos'], filterByHash)
 	private filteredTodos:Task[];
 
+	// Список всех активных задач
 	@reactive(['todos'], filterByCompleted)
 	private activeTodos:Task[];
 
-	@reactive(['todos', 'activeTodos'], isAllCompleted)
-	private allChecked:boolean = false;
+	// Состояние всех текущих задач
+	@reactive(['filteredTodos'], isAllCompleted)
+	private allCompleted:boolean;
 
+	// Добавление новой задачи
 	handleAddTodo(evt) {
 		if (evt.keyCode === ENTER_KEY) {
 			const title = evt.target.value.trim();
@@ -33,36 +36,40 @@ export default class TodoApp {
 		}
 	}
 
+	// Удаление задачи
 	handleRemove(todo) {
 		const todos = this.todos.slice(0);
 		todos.splice(todos.indexOf(todo), 1);
 		this.todos = todos;
 	}
 
+	// Ответить все задача как готовые
 	handleMarkAll() {
-		const state = !this.allChecked;
+		const state = !this.allCompleted;
 		this.todos.forEach(todo => todo.completed = state);
 	}
 
+	// Отчитстить все готовые задачи
 	handleClearCompleted() {
 		this.todos = this.todos.filter(todo => !todo.completed);
 	}
 
+	// Сохранять список задач при каждом их изменении
 	@reactive(['todos'])
 	handleSave() {
 		saveTodos(this.todos);
 	}
 
 	render() {
-		return () => `
+		return `
 			<section class="todoapp">
 				<header class="header">
 					<h1>todos</h1>
-					<input value="${this.newTodo}" on-keydown="${(evt) => this.handleAddTodo(evt)}" class="new-todo" placeholder="What needs to be done?" autofocus/>
+					<input on-keydown="${(evt) => this.handleAddTodo(evt)}" class="new-todo" placeholder="What needs to be done?" autofocus/>
 				</header>
 
 				<section class="main">
-					<input id="toggle-all" on-click="${() => this.handleMarkAll()}" class="toggle-all" type="checkbox" checked="{this.allChecked}"/>
+					<input id="toggle-all" on-click="${() => this.handleMarkAll()}" checked="${this.allCompleted}" class="toggle-all" type="checkbox"/>
 					<label for="toggle-all">Mark all as complete</label>
 					<ul class="todo-list">
 						${this.filteredTodos.map((todo:Task) => `
