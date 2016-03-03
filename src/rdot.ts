@@ -7,6 +7,7 @@ type ReactiveGetter<T> = (dot?:ReactiveDot<T>) => T;
 type ReactiveSetter<T> = (currentValue?:T, previousValue?:T) => T;
 type ReactiveOnValueListener<T> = (currentValue?:T, previousValue?:T) => void;
 type ReactiveCombinator<T> = (dots:Array<T>) => ReactiveDot<T>;
+type DOMElement = HTMLElement|Window|Document;
 
 export interface ReactiveOptions<T> {
 	initialCall?: boolean;
@@ -381,15 +382,15 @@ class ReactiveDot<T> {
 		return new ReactiveDom(el);
 	}
 
-	static fromEvent<T extends Event>(el:Element, eventName:string):ReactiveDot<T> {
+	static fromEvent<T extends Event>(el:DOMElement, eventName:string):ReactiveDot<T> {
 		let dot = new ReactiveDot<T>(new Event(eventName) as T, {
 			setup() {
 				this.handle = (evt) => this.set(evt);
-				el.addEventListener(eventName, this.handle);
+				(el as HTMLElement).addEventListener(eventName, this.handle);
 			},
 
 			teardown() {
-				el.removeEventListener(eventName, this.handle);
+				(el as HTMLElement).removeEventListener(eventName, this.handle);
 				this.handle = null;
 			}
 		});
@@ -516,7 +517,7 @@ function reactiveDecorator(target, propertyName?) {
 					let dot = this[privateName];
 
 					if (dot === void 0) {
-						dot = new rdot(() => {
+						dot = new RDot(() => {
 							const values = new Array(length);
 
 							if (length <= 3) {
@@ -567,7 +568,7 @@ function reactiveDecorator(target, propertyName?) {
 				let dot = this[privateName];
 
 				if (dot === void 0) {
-					this[privateName] = new rdot(value);
+					this[privateName] = new RDot(value);
 				} else {
 					dot.set(value);
 				}
@@ -579,5 +580,5 @@ function reactiveDecorator(target, propertyName?) {
 
 // Export
 export default ReactiveDot;
-export const rdot = ReactiveDot;
+export const RDot = ReactiveDot;
 export const reactive = reactiveDecorator;
