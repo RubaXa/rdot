@@ -1,11 +1,19 @@
 /// <reference path="../typings/citojs/citojs.d.ts" />
 
 import {vdom} from 'citojs';
+import ReactiveDot from './rdot';
 
+const DEBUG:boolean = false;
 const R_ATTRS:RegExp = /\s([^=]+)="(.*?)"/g;
 const R_EXPR:RegExp = /\{%\s([\s\S]*?)\s%\}/g;
+const R_HAS_EXPR:RegExp = /\{%\s([\s\S]*?)\s%\}/;
 const R_IS_STRICT_EXPR:RegExp = /^\{%\s(.*?)\s%\}$/;
-const NULL_FRAG = {tag: '!'};
+
+function reactiveBind(ctx:any, fn:Function):Function {
+	return function reactiveBinded() {
+		return (arguments.length ? fn.apply(ctx, arguments) : fn.call(ctx)) || {tag: '!'};
+	};
+}
 
 function toVDOM(code:string):string {
 	code = code.replace(/(\s*)<([a-z0-9:-]+)((?:\s[a-z-]+="[^"]+")*)>([\s\S]*?)\1<\/\2>/g, (_, padding, tag, attrsString, content, idx) => {
@@ -19,16 +27,18 @@ function toVDOM(code:string):string {
 	return code;
 }
 
-function toVDOMNode(tag:string, attrsString:string, content?:string) {
+function toVDOMNode(tag:string, unparsedAttrs:string, content?:string) {
 	const attrs:{[index:string]: string} = {};
 	const events:{[index:string]: string} = {};
 
 	let code:string = ``;
 	let matches:string[];
+	let attrsStr:string = '';
+	let hasReactiveAttrs:boolean = false;
 	let hasAttrs:boolean = false;
 	let hasEvents:boolean = false;
 
-	while (matches = R_ATTRS.exec(attrsString)) {
+	while (matches = R_ATTRS.exec(unparsedAttrs)) {
 		const attr:string = matches[1];
 		let value:string = matches[2];
 
@@ -44,7 +54,22 @@ function toVDOMNode(tag:string, attrsString:string, content?:string) {
 	}
 
 	if (hasAttrs) {
-		code += `, attrs: {${Object.keys(attrs).map((name:string) => `${name}: ${interpolate(attrs[name])}`).join(', ')}}`;
+		attrsStr = '{' + Object.keys(attrs).map((name:string) => {
+			let value:string = attrs[name];
+
+			if (R_HAS_EXPR.test(value)) {
+				value = interpolate(value);
+				hasReactiveAttrs = true;
+			} else {
+				value = interpolate(value);
+			}
+
+			return `${name}: ${value}`;
+		}).join(', ') + '}';
+
+		if (!hasReactiveAttrs) {
+			code += `, attrs: ${attrsStr}`;
+		}
 	}
 
 	if (hasEvents) {
@@ -55,11 +80,23 @@ function toVDOMNode(tag:string, attrsString:string, content?:string) {
 		if (/<\w+/.test(content)) {
 			code += `, children: [${toVDOM(content)}]`;
 		} else {
-			code += `, children: ${interpolate(content)}`;
+			if (R_HAS_EXPR.test(content)) {
+				content = `__rdom.content(this, function(){return(${interpolate(content)})})`;
+			} else {
+				content = interpolate(content);
+			}
+
+			code += `, children: ${content}`;
 		}
 	}
 
-	return `{tag: "${tag}"${code}}`;
+	code = `{tag: "${tag}"${code}}`;
+
+	if (hasReactiveAttrs) {
+		code = `__rdom.attrs(this, function(){return(${attrsStr})}, ${code})`;
+	}
+
+	return code;
 }
 
 function interpolate(value:string):string {
@@ -88,8 +125,12 @@ export function compile(source:string):()=>any {
 	// Конвертируем в vdom
 	code = toVDOM(code);
 
-	// Доделываем
-	code = code.replace(R_EXPR, ', __rdom.frag(() => $1 ) ');
+	// Доробатываем реактивные выражения, типа циклов и треннарных опретаторов
+	let _code:string;
+	do {
+		_code = code;
+		code = code.replace(R_EXPR, ', __rdom.frag(this, function(){return($1)}) ');
+	} while (_code !== code);
 
 	// Чистим запятые
 	code = code.replace(/([\(\[])\s*?,/g, '$1');
@@ -98,12 +139,68 @@ export function compile(source:string):()=>any {
 	code = code.replace(/\?\s*"\s*,/g, '? ');
 	code = code.replace(/"\s*:(\s*"\s*,)?/g, ' : ');
 
-	console.log(code);
+	//console.log(code);
 
+	// Компилируем
 	return Function('__rdom', 'return ' + code)({
-		frag(getter) {
-			return () => {
-				return getter() || NULL_FRAG;
+		frag(_this, getter) {
+			getter = reactiveBind(_this, getter);
+
+			return function reactiveFragment(prevFrag) {
+				const dot = new ReactiveDot<any>(getter);
+				let frag:any = dot.get();
+
+				DEBUG && console.log('create.frag:', frag, prevFrag);
+				prevFrag && (prevFrag.dot as ReactiveDot<any>).dispose();
+				(frag instanceof Array) && (frag = {children: frag});
+
+				dot.onValue(newFrag => {
+					DEBUG && console.log('update.frag:', newFrag, frag);
+					(newFrag instanceof Array) && (newFrag = {children: newFrag});
+					vdom.update(frag, newFrag);
+					frag.dot = dot;
+				}, false);
+
+				frag.dot = dot;
+
+				return frag;
+			};
+		},
+
+		content(_this, getter) {
+			getter = reactiveBind(_this, getter);
+
+			return function reactiveContent(prevFrag, parent) {
+				const dot = new ReactiveDot<any>(getter);
+				const node:any = {tag: '#', children: dot.get()};
+
+				prevFrag && (prevFrag.dot as ReactiveDot<any>).dispose();
+				node.dot = dot;
+				DEBUG && console.log('create.content:', node, prevFrag);
+
+				dot.onValue(content => {
+					DEBUG && console.log('update.content:', content);
+					(node.dom || parent.dom).textContent = content;
+				}, false);
+
+				return node;
+			};
+		},
+
+		attrs(_this, getter, node) {
+			getter = reactiveBind(_this, getter);
+
+			return function () {
+				const dot = new ReactiveDot<any>(getter);
+
+				dot.onValue((attrs:any) => {
+					vdom.updateAttributes(node.dom, node.tag, node.ns, attrs, node.attrs);
+					node.attrs = attrs;
+				}, false);
+
+				node.attrs = dot.get();
+
+				return node;
 			};
 		}
 	});
@@ -116,6 +213,6 @@ export function render(el:HTMLElement, target:any) {
 	}
 
 	const fragment:any = target.render();
-	console.log(fragment);
+	//console.log(fragment);
 	vdom.append(el, fragment);
 }
