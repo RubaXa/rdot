@@ -16,4 +16,11 @@ export default class Task {
 		this.title = title;
 		this.completed = completed;
 	}
+
+	toJSON() {
+		return {
+			title: this.title,
+			completed: this.completed
+		};
+	}
 }

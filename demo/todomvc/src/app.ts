@@ -1,4 +1,4 @@
-import {reactive} from '../../../src/rdot';
+import {RDot, reactive} from '../../../src/rdot';
 import Task from './task';
 import {STORE_NAME, ENTER_KEY} from './const';
 import {getHash, loadTodos, saveTodos, filterByHash, filterByCompleted, isAllCompleted} from './utils';
@@ -24,7 +24,17 @@ export default class TodoApp {
 	@reactive(['filteredTodos'], isAllCompleted)
 	private allCompleted:boolean;
 
-	// Добавление новой задачи
+	constructor() {
+		// Изменяем фильтр в зависимости от hash
+		RDot.fromEvent(window, 'hashchange').onValue(() => {
+			this.filter = getHash();
+		});
+
+		// Вызываем сохранение в зависимости вот задач
+		new RDot<any>(() => [this.todos, this.activeTodos]).onValue(() => this.handleSave());
+	}
+
+	// Добавление задачи
 	handleAddTodo(evt) {
 		if (evt.keyCode === ENTER_KEY) {
 			const title = evt.target.value.trim();
@@ -43,10 +53,10 @@ export default class TodoApp {
 		this.todos = todos;
 	}
 
-	// Ответить все задача как готовые
+	// Отметить все задача как готовые
 	handleMarkAll() {
 		const state = !this.allCompleted;
-		this.todos.forEach(todo => todo.completed = state);
+		this.todos.forEach((todo:Task) => todo.completed = state);
 	}
 
 	// Отчитстить все готовые задачи
@@ -54,8 +64,6 @@ export default class TodoApp {
 		this.todos = this.todos.filter(todo => !todo.completed);
 	}
 
-	// Сохранять список задач при каждом их изменении
-	@reactive(['todos'])
 	handleSave() {
 		saveTodos(this.todos);
 	}
@@ -84,7 +92,7 @@ export default class TodoApp {
 					</ul>
 				</section>
 
-				${this.todos.length ? `
+				${!!this.todos.length ? `
 					<footer class="footer">
 						<span class="todo-count">${this.activeTodos.length} items left</span>
 						<ul class="filters">
@@ -92,9 +100,9 @@ export default class TodoApp {
 							<li><a href="#/active" class="${this.filter === 'active' ? 'selected' : ''}">Active</a></li>
 							<li><a href="#/completed" class="${this.filter === 'completed' ? 'selected' : ''}">Completed</a></li>
 						</ul>
-						<fn:if test="this.todos.length != this.activeTodos.length">
-							<span><button class="clear-completed" on-click="${() => this.handleClearCompleted()}">Clear completed</button></span>
-						</fn:if>
+						${this.todos.length != this.activeTodos.length ? `
+							<button class="clear-completed" on-click="${() => this.handleClearCompleted()}">Clear completed</button>
+						` : null}
 					</footer>
 				` : null}
 			</section>

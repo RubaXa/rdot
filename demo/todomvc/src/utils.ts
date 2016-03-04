@@ -2,15 +2,16 @@ import Task from './task';
 import {STORE_NAME} from './const';
 
 export function getHash() {
-	return location.toString().split('#/')[1];
+	return location.toString().split('#/')[1] || 'all';
 }
 
 export function loadTodos() {
-	return JSON.parse(localStorage.getItem(STORE_NAME)) || [];
+	const todos:{title:string, completed:boolean}[] = (JSON.parse(localStorage.getItem(STORE_NAME)) || []);
+	return todos.map(data => new Task(data.title, data.completed));
 }
 
 export function saveTodos(todos) {
-	JSON.stringify(STORE_NAME, todos);
+	localStorage.setItem(STORE_NAME, JSON.stringify(todos));
 }
 
 export function filterByHash(dot) {

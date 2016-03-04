@@ -4,8 +4,8 @@
 	<meta charset="utf-8"/>
 	<title>Reactive Dot :: TodoMVC</title>
 
-	<link rel="stylesheet" href="http://todomvc.com/examples/vanillajs/node_modules/todomvc-common/base.css">
-	<link rel="stylesheet" href="http://todomvc.com/examples/vanillajs/node_modules/todomvc-app-css/index.css">
+	<link rel="stylesheet" href="./css/base.css">
+	<link rel="stylesheet" href="./css/index.css">
 </head>
 <body>
 
@@ -17,7 +17,7 @@
 		<p>Part of <a href="http://todomvc.com">TodoMVC</a></p>
 	</footer>
 
-	<script src="https://jspm.io/system@0.19.js"></script>
+	<script src="./../../vendor/system.js"></script>
 	<script>
 		System.config({
 			map: {
@@ -32,7 +32,7 @@
 		});
 
 		System.import('todomvc').then(function (boot) {
-			boot['default'](window['app-canvas']);
+			window.app = boot['default'](window['app-canvas']);
 		});
 	</script>
 
