@@ -214,5 +214,5 @@ export function render(el:HTMLElement, target:any) {
 
 	const fragment:any = target.render();
 	//console.log(fragment);
-	vdom.append(el, fragment);
+	return vdom.append(el, fragment);
 }
