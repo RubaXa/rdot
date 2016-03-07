@@ -3,7 +3,7 @@
 import {vdom} from 'citojs';
 import ReactiveDot from './rdot';
 
-const DEBUG:boolean = false;
+const DEBUG:boolean = true;
 const R_ATTRS:RegExp = /\s([^=]+)="(.*?)"/g;
 const R_EXPR:RegExp = /\{%\s([\s\S]*?)\s%\}/g;
 const R_HAS_EXPR:RegExp = /\{%\s([\s\S]*?)\s%\}/;
