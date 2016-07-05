@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-framework="angularjs">
+<head>
+	<meta charset="utf-8">
+	<title>ReactiveDot • TodoMVC</title>
+	<link rel="stylesheet" href="//todomvc.com/examples/angularjs/node_modules/todomvc-common/base.css">
+	<link rel="stylesheet" href="//todomvc.com/examples/angularjs/node_modules/todomvc-app-css/index.css">
+</head>
+<body>
+
+	<div id="app-canvas"></div>
+
+	<script src="./../../vendor/system.js"></script>
+	<script>
+		System.config({
+			map: {
+				'xmlparserjs': '../../../../feast/src/xmlparser',
+				'todosapp-boot': '../../dist/demo/todos/boot'
+			},
+			packages: {
+				'': {
+					defaultExtension: 'js'
+				}
+			}
+		});
+
+		System.import('todosapp-boot').then(function (boot) {
+			window.app = boot['default'](window['app-canvas']);
+		});
+	</script>
+
+</body>
+</html>

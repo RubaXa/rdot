@@ -1,4 +1,4 @@
-import {reactive} from '../../../src/rdot';
+import {reactive} from '../../../src/rdecorators';
 
 let gid = 1;
 

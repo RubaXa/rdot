@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8"/>
+	<title>Reactive Dot :: Tests</title>
+
+	<style>
+		.true {
+			text-decoration: line-through;
+		}
+	</style>
+</head>
+<body>
+	<div id="app-canvas"></div>
+
+	<script src="./../../vendor/system.js"></script>
+	<script>
+		System.config({
+			map: {
+				'xmlparserjs': '../../../../feast/src/xmlparser',
+				'test': '../../dist/demo/test/test'
+			},
+			packages: {
+				'': {
+					defaultExtension: 'js'
+				}
+			}
+		});
+
+		System.import('test').then(function (boot) {
+			window.apps = boot['default'](window['app-canvas']);
+		});
+	</script>
+
+</body>
+</html>

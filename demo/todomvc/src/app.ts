@@ -1,4 +1,5 @@
-import {RDot, reactive} from '../../../src/rdot';
+import ReactiveDot from '../../../src/rdot';
+import {reactive} from '../../../src/rdecorators';
 import Task from './task';
 import {STORE_NAME, ENTER_KEY} from './const';
 import {getHash, loadTodos, saveTodos, filterByHash, filterByCompleted, isAllCompleted} from './utils';
@@ -26,12 +27,12 @@ export default class TodoApp {
 
 	constructor() {
 		// Изменяем фильтр в зависимости от hash
-		RDot.fromEvent(window, 'hashchange').onValue(() => {
+		ReactiveDot.fromEvent(window, 'hashchange').onValue(() => {
 			this.filter = getHash();
 		});
 
 		// Вызываем сохранение в зависимости вот задач
-		new RDot<any>(() => [this.todos, this.activeTodos]).onValue(() => this.handleSave());
+		new ReactiveDot<any>(() => [this.todos, this.activeTodos]).onValue(() => this.handleSave());
 	}
 
 	// Добавление задачи
