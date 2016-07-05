@@ -105,3 +105,64 @@ b.set(-3); // "sum: 0" — да, схлопывания нет, оно не бы
 ### Что дальше?
 
 А дальше, гроб, гроб, кладбище... MIT.
+
+
+
+
+const list = new rdot.List('A', 'B', 'C');
+
+list.push('D');   // + idx: 4
+list.remove('A'); // - idx: 1
+list.push('E');   // + idx: 4
+list.remove('D'); // - idx: 3
+
+---1---
+<ul>
+	<li>A</li>
+	<li>B</li>
+	<li>C</li>
+	[li]D[/li]
+</ul>
+
+---2---
+<ul>
+-	<li>A</li>
+	<li>B</li>
+	<li>C</li>
++	[li]D[/li]
+</ul>
+
+---3---
+<ul>
+-	<li>A</li>
+	<li>B</li>
+	<li>C</li>
++	[li]D[/li]
++	[li]E[/li]
+</ul>
+
+
+---4---
+<ul>
+-	<li>A</li>
+	<li>B</li>
+	<li>C</li>
++	[li]E[/li]
+</ul>
+
+
+---FINAL---
+<ul>
+	<li>B</li>
+	<li>C</li>
++	<li>E</li>   (based on <li>A</li>)
+</ul>
+
+
+---
+
+<ul>
+	<li>B</li>
+	<li>C</li>
+	<li>E</li>
+</ul>
