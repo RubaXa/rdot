@@ -30,6 +30,10 @@ let _queueExists:ReactiveDotExists = {};
 let _revision:number = 0;
 let _computing:number = void 0;
 
+const STATE_AWAITING = void 0;
+const STATE_BUSY = -1;
+const STATE_READY = 1;
+
 const setImmediate = window.setImmediate || window.setTimeout;
 const defaultOptions:ReactiveOptions<any> = {};
 
@@ -40,20 +44,22 @@ function _add2Queue(dot:ReactiveDot<any>, compute?:boolean) {
 		_queueExists[dot.id] = 1; // wtf? невозможно строго указать, что индекс может быть только цифровым, например `_queueMap['for'] = 1;` не выдас ошибок
 	}
 
-	if (compute && (_computing === void 0 && _computing !== -1)) {
-		if (dot.onValueListeners !== void 0 || dot.options.sync === true) {
-			_computing = _computing || 1;
+	if (compute && (_computing === STATE_AWAITING && _computing !== STATE_BUSY)) {
+		if (dot.options.sync === true) {
+			_computing = _computing || STATE_READY;
 			_computingAll();
 		}
 		else {
+			_computing = STATE_READY;
+			// _computingAll();
 			_computing = setImmediate(_computingAll);
 		}
 	}
 }
 
 function _computingAll() {
-	if (_computing !== void 0 && _computing !== -1) {
-		_computing = -1;
+	if (_computing !== STATE_AWAITING && _computing !== STATE_BUSY) {
+		_computing = STATE_BUSY;
 		_revision++;
 
 		let cursor = 0;
@@ -85,12 +91,12 @@ function _computingAll() {
 
 		_queue = [];
 		_queueExists = {};
-		_computing = void 0;
+		_computing = STATE_AWAITING;
 	}
 }
 
 
-class ReactiveDot<T> {
+export default class ReactiveDot<T> {
 	/** Local identifier. readonly. */
 	public id:number;
 
@@ -101,8 +107,8 @@ class ReactiveDot<T> {
 	public value:T;
 
 	public options:ReactiveOptions<T>;
-	private staticValue:T;
-	private getter:Function;
+	public staticValue:T;
+	public getter:Function;
 
 	public linked:ReactiveDot<any>[];
 	public linkedExists:Object; // todo: MapInterface
@@ -149,7 +155,7 @@ class ReactiveDot<T> {
 
 	/** Get current reactive value */
 	get():T {
-		if (_computing !== void 0 && _computing !== -1) {
+		if (_computing !== STATE_AWAITING && _computing !== STATE_BUSY) {
 			_computingAll();
 		}
 
@@ -209,24 +215,28 @@ class ReactiveDot<T> {
 
 			if (changed) {
 				_notify(this, currentValue, previousValue);
+
 			}
 
 			// Проверяем точки, от которых мы зависим
 			let dependsOn = this.dependsOn;
-			let dependsOnExists = this.dependsOnExists;
-			let idx = dependsOn.length;
 
-			if (idx !== 0) {
-				let depDot;
-				let tick = this.tick;
-				//console.log('dependsOn.check: %d, tick: %d', dot.id, dot.tick);
+			if (dependsOn !== null) {
+				let dependsOnExists = this.dependsOnExists;
+				let idx = dependsOn.length;
 
-				while (idx--) {
-					depDot = dependsOn[idx];
-					//console.log('dependsOn.id: %d, cur.tick: %d, eq.tick: %d', depDot.id, _dependsOn[depDot.id], tick);
+				if (idx !== 0) {
+					let depDot;
+					let tick = this.tick;
+					//console.log('dependsOn.check: %d, tick: %d', dot.id, dot.tick);
 
-					if (dependsOnExists[depDot.id] !== tick) {
-						_unlink(depDot, this);
+					while (idx--) {
+						depDot = dependsOn[idx];
+						//console.log('dependsOn.id: %d, cur.tick: %d, eq.tick: %d', depDot.id, _dependsOn[depDot.id], tick);
+
+						if (dependsOnExists[depDot.id] !== tick) {
+							_unlink(depDot, this);
+						}
 					}
 				}
 			}
@@ -270,11 +280,29 @@ class ReactiveDot<T> {
 	}
 
 	dispose():void {
+		this.value = null;
+		this.constant = true;
+		this.staticValue = null;
+		this.getter = null;
+
 		this.linked = [];
 		this.linkedExists = {};
 		this.dependsOn = [];
 		this.dependsOnExists = {};
 		this.onValueListeners = [];
+	}
+
+	destroy() {
+		this.value = null;
+		this.constant = true;
+		this.staticValue = null;
+		this.getter = null;
+
+		this.linked = null;
+		this.linkedExists = null;
+		this.dependsOn = null;
+		this.dependsOnExists = null;
+		this.onValueListeners = null;
 	}
 
 	valueOf():T {
@@ -490,95 +518,23 @@ function _notify(dot:ReactiveDot<any>, currentValue:any, previousValue:any) {
 	}
 }
 
-function setGetSet(target:any, propertyName:string, getter:()=>any, setter:(value:any)=>void) {
-	Object.defineProperty(target, propertyName, {
-		get: getter,
-		set: setter,
-		enumerable: true
-	});
-}
-
-function reactiveDecorator(depends:any[], initFn?:Function);
-function reactiveDecorator(target:any, propertyName:string);
-function reactiveDecorator(target, propertyName?) {
-	if (target instanceof Array) {
-		const depends = target;
-		const length = depends.length;
-		const initFn = propertyName;
-
-		return function (target:any, propertyName:string) {
-			const privateName = `__rdot:${propertyName}`;
-			const propertyValue = target[propertyName];
-			const isFunction = typeof propertyValue === 'function';
-
-			setGetSet(target, propertyName,
-				// Getter
-				function () {
-					let dot = this[privateName];
-
-					if (dot === void 0) {
-						dot = new RDot(() => {
-							const values = new Array(length);
-
-							if (length <= 3) {
-								values[0] = this[depends[0]];
-								(length === 2) && (values[1] = this[depends[1]]);
-								(length === 3) && (values[2] = this[depends[2]]);
-							} else {
-								for (let i = 0; i < length; i++) {
-									values[i] = this[depends[i]];
-								}
-							}
-
-							return values;
-						});
-
-						dot = initFn ? initFn(dot) : dot;
-
-						if (isFunction) {
-							dot.onValue(val => propertyValue.call(this, val));
-						}
-					}
-
-					if (isFunction) {
-						return propertyValue;
-					} else {
-						return dot.get();
-					}
-				},
-
-				// Setter
-				function () {
-					console.warn(`${propertyName} — readonly`);
-				}
-			);
-		};
-	} else {
-		const privateName = `__rdot:${propertyName}`;
-
-		setGetSet(target, propertyName,
-			// Getter
-			function () {
-				let dot = this[privateName];
-				return dot !== void 0 && dot.get();
-			},
-
-			// Setter
-			function (value) {
-				let dot = this[privateName];
-
-				if (dot === void 0) {
-					this[privateName] = new RDot(value);
-				} else {
-					dot.set(value);
-				}
-			}
-		);
-	}
-}
-
 
 // Export
-export default ReactiveDot;
-export const RDot = ReactiveDot;
-export const reactive = reactiveDecorator;
+export const rdot = ReactiveDot;
+
+export function rexpression<T>(expr:ReactiveGetter<T>):T {
+	return <T><any>new ReactiveDot<T>(expr);
+}
+
+export class RStream<T> extends ReactiveDot<T> {
+	constructor(value?:T) {
+		super(value, <ReactiveOptions>{initialCall: false, sync: true});
+	}
+
+	add(value:T) {
+		this.value = null;
+		this.set(value);
+
+		return this;
+	}
+}
