@@ -8,7 +8,8 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "watch": "ntsc --watch"
+    "watch": "ntsc --watch",
+    "prepublish": "ntsc"
   },
   "author": "RubaXa <trash@rubaxa.org>",
   "license": "MIT",
