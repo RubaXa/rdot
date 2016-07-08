@@ -554,3 +554,15 @@ export class RStream<T> extends ReactiveDot<T> {
 		return this;
 	}
 }
+
+export function rfunction<T>(callback:Function):(...args) => T {
+	let _this:any;
+	let _args:any[];
+	const dot = new ReactiveDot<T>(() => { return callback.apply(_this, _args); });
+
+	return function rfn(...args) {
+		_args = args;
+		_this = this;
+		return dot.get();
+	};
+}
