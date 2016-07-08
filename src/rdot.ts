@@ -2,12 +2,12 @@
  * Reactive Dot
  */
 
-type ReactiveCallback<T> = (dot?:ReactiveDot<T>) => void;
-type ReactiveGetter<T> = (dot?:ReactiveDot<T>) => T;
-type ReactiveSetter<T> = (currentValue?:T, previousValue?:T) => T;
-type ReactiveOnValueListener<T> = (currentValue?:T, previousValue?:T) => void;
-type ReactiveCombinator<T> = (dots:Array<T>) => ReactiveDot<T>;
-type DOMElement = HTMLElement|Window|Document;
+export type ReactiveCallback<T> = (dot?:ReactiveDot<T>) => void;
+export type ReactiveGetter<T> = (dot?:ReactiveDot<T>) => T;
+export type ReactiveSetter<T> = (currentValue?:T, previousValue?:T) => T;
+export type ReactiveOnValueListener<T> = (currentValue?:T, previousValue?:T) => void;
+export type ReactiveCombinator<T> = (dots:Array<T>) => ReactiveDot<T>;
+export type DOMElement = HTMLElement|Window|Document;
 
 export interface ReactiveOptions<T> {
 	initialCall?: boolean;
@@ -92,6 +92,18 @@ function _computingAll() {
 		_queue = [];
 		_queueExists = {};
 		_computing = STATE_AWAITING;
+	}
+}
+
+
+export class ReactiveState {
+	static INITIALIZATION = new ReactiveState('initialization');
+	static INTERACTIVE = new ReactiveState('interactive');
+	static PROCESSING = new ReactiveState('processing');
+	static READY = new ReactiveState('READY');
+	static ERROR = new ReactiveState('ERROR');
+
+	constructor(public name:string, public detail?:any) {
 	}
 }
 
@@ -318,17 +330,17 @@ export default class ReactiveDot<T> {
 		_add2Queue(this, true);
 	}
 
-	map<R extends T>(fn:Function):ReactiveDot<R> {
-		return new ReactiveDot<R>(() => fn(this.get(), this));
+	map<R>(callback:(value:T) => R):ReactiveDot<R> {
+		return new ReactiveDot<R>(() => callback(this.get()));
 	}
 
-	filter<R extends T>(fn:Function):ReactiveDot<R> {
+	filter<R>(callback:(value:T) => R):ReactiveDot<R> {
 		let retVal;
 
 		return new ReactiveDot<R>(() => {
 			const val = this.get();
 
-			if (fn(val)) {
+			if (callback(val)) {
 				retVal = val;
 			}
 
@@ -376,6 +388,10 @@ export default class ReactiveDot<T> {
 		});
 
 		return this;
+	}
+
+	next<R>(callback:(value:T) => R):ReactiveDot<R> {
+		return new ReactiveDot<R>(() => callback(this.get()));
 	}
 
 	arrayFilter(fn:Function):ReactiveDot<any[]> {
@@ -447,7 +463,7 @@ export default class ReactiveDot<T> {
 	}
 }
 
-class ReactiveDom extends ReactiveDot<string> {
+export class ReactiveDom extends ReactiveDot<string> {
 	public el:HTMLInputElement;
 
 	constructor(el:HTMLInputElement) {
@@ -528,7 +544,7 @@ export function rexpression<T>(expr:ReactiveGetter<T>):T {
 
 export class RStream<T> extends ReactiveDot<T> {
 	constructor(value?:T) {
-		super(value, <ReactiveOptions>{initialCall: false, sync: true});
+		super(value, {initialCall: false, sync: true} as ReactiveOptions<T>);
 	}
 
 	add(value:T) {

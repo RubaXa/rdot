@@ -2,7 +2,8 @@
   "name": "rdot",
   "version": "0.1.0",
   "description": "Reactive Dot",
-  "main": "rdot.js",
+  "main": "dist/src/rdot.js",
+  "typings": "dist/src/rdot.d.ts",
   "directories": {
     "test": "tests"
   },
