@@ -15,6 +15,7 @@ export interface ReactiveOptions<T> {
 	setter?: ReactiveSetter<T>;
 	setup?: ReactiveCallback<T>;
 	teardown?: ReactiveCallback<T>;
+	logger?:string;
 }
 
 interface ReactiveDotExists {
@@ -39,7 +40,7 @@ const defaultOptions:ReactiveOptions<any> = {};
 
 function _add2Queue(dot:ReactiveDot<any>, compute?:boolean) {
 	if (_queueExists[dot.id] === void 0) {
-		dot.revision = null;
+		dot.invalidate = true;
 		_queue.push(dot);
 		_queueExists[dot.id] = 1; // wtf? невозможно строго указать, что индекс может быть только цифровым, например `_queueMap['for'] = 1;` не выдас ошибок
 	}
@@ -71,7 +72,7 @@ function _computingAll() {
 			// computing
 			dot.get();
 
-			if (linked) {
+			if (dot.changed && linked) {
 				const length = linked.length;
 
 				if (length > 0) {
@@ -99,9 +100,10 @@ function _computingAll() {
 export class ReactiveState {
 	static INITIALIZATION = new ReactiveState('initialization');
 	static INTERACTIVE = new ReactiveState('interactive');
+	static AWAITING = new ReactiveState('awaiting');
 	static PROCESSING = new ReactiveState('processing');
-	static READY = new ReactiveState('READY');
-	static ERROR = new ReactiveState('ERROR');
+	static READY = new ReactiveState('ready');
+	static ERROR = new ReactiveState('error');
 
 	constructor(public name:string, public detail?:any) {}
 
@@ -111,6 +113,10 @@ export class ReactiveState {
 
 	is(state:ReactiveState) {
 		return this.name === state.name;
+	}
+
+	toJSON() {
+		return {name: this.name, detail: this.detail};
 	}
 }
 
@@ -126,12 +132,16 @@ export default class ReactiveDot<T> {
 	public value:T;
 
 	public options:ReactiveOptions<T>;
+	public changed:boolean = false;
+	public invalidate:boolean = true;
 	public staticValue:T;
 	public getter:Function;
 
+	// Связанные точки
 	public linked:ReactiveDot<any>[];
 	public linkedExists:Object; // todo: MapInterface
 
+	// Точки, от которых зависим
 	private dependsOn:ReactiveDot<any>[];
 	private dependsOnExists:Object; // todo: MapInterface
 
@@ -188,7 +198,7 @@ export default class ReactiveDot<T> {
 		}
 
 		// Значение устарело, требуется перерасчет
-		if (this.revision !== _revision) {
+		if ((this.revision !== _revision) && this.invalidate) {
 			const options = this.options;
 			const _setter = options.setter;
 			//console.log('dot: %d, tick: %d, rev: %d (new: %d)', dot.id, dot.tick, dot.revision, _revision);
@@ -206,6 +216,7 @@ export default class ReactiveDot<T> {
 
 			this.tick++;
 			this.revision = _revision;
+			this.invalidate = false;
 
 			// Computing value
 			//console.log('getter.dot: %d, rev: %d, tick: %d', dot.id, _revision, dot.tick);
@@ -223,8 +234,13 @@ export default class ReactiveDot<T> {
 			changed = previousValue !== currentValue;
 
 			this.value = currentValue;
+			this.changed = changed;
 
 			if (changed) {
+				if (options.logger != null) {
+					console.log(`[${options.logger}]: ${JSON.stringify(previousValue)} -> ${JSON.stringify(currentValue)}`);
+				}
+
 				_notify(this, currentValue, previousValue);
 
 			}
@@ -254,6 +270,15 @@ export default class ReactiveDot<T> {
 		}
 
 		return currentValue;
+	}
+
+	log(name:string) {
+		if (this.options === defaultOptions) {
+			this.options = Object.create(defaultOptions);
+		}
+
+		this.options.logger = name;
+		return this;
 	}
 
 	linkTo(target:ReactiveDot<any>) {
@@ -297,6 +322,21 @@ export default class ReactiveDot<T> {
 			this.onValueListeners = [callback];
 		} else {
 			this.onValueListeners.push(callback);
+		}
+
+		return this;
+	}
+
+	offValue(callback) {
+		const onValueListeners = this.onValueListeners;
+
+		if (onValueListeners === callback) {
+			delete this.onValueListeners;
+		} else if (onValueListeners instanceof Array) {
+			const idx = onValueListeners.indexOf(callback);
+			if (idx) {
+				onValueListeners.splice(idx, 1);
+			}
 		}
 
 		return this;
@@ -562,8 +602,9 @@ export function rexpression<T>(expr:ReactiveGetter<T>):T {
 }
 
 export class RStream<T> extends ReactiveDot<T> {
-	constructor(value?:T) {
-		super(value, {initialCall: false, sync: true} as ReactiveOptions<T>);
+	constructor(callback:(value:T) => void) {
+		super(null, {initialCall: false, sync: true} as ReactiveOptions<T>);
+		this.onValue(callback);
 	}
 
 	add(value:T) {
