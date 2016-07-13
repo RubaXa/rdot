@@ -103,7 +103,14 @@ export class ReactiveState {
 	static READY = new ReactiveState('READY');
 	static ERROR = new ReactiveState('ERROR');
 
-	constructor(public name:string, public detail?:any) {
+	constructor(public name:string, public detail?:any) {}
+
+	from(detail) {
+		return new ReactiveState(this.name, detail);
+	}
+
+	is(state:ReactiveState) {
+		return this.name === state.name;
 	}
 }
 
@@ -177,15 +184,7 @@ export default class ReactiveDot<T> {
 		let changed:boolean;
 
 		if (_activeDot !== void 0) {
-			if (this.linkedExists[_activeDot.id] === void 0) {
-				this.linkedExists[_activeDot.id] = 1;
-				this.linked.push(_activeDot);
-
-				_activeDot.dependsOn.push(this);
-			}
-
-			_activeDot.dependsOnExists[this.id] = _activeDot.tick;
-			//console.log('setTick.dot: %d, prev: %d, active: %d', dot.id, dependsOnTick, _activeDot.tick);
+			this.linkTo(_activeDot);
 		}
 
 		// Значение устарело, требуется перерасчет
@@ -255,6 +254,18 @@ export default class ReactiveDot<T> {
 		}
 
 		return currentValue;
+	}
+
+	linkTo(target:ReactiveDot<any>) {
+		if (this.linkedExists[target.id] === void 0) {
+			this.linkedExists[target.id] = 1;
+			this.linked.push(target);
+
+			target.dependsOn.push(this);
+		}
+
+		target.dependsOnExists[this.id] = target.tick;
+		// console.log('setTick.dot: %d, prev: %d, active: %d', dot.id, dependsOnTick, target.tick);
 	}
 
 	/** Set new reactive value or getter */
@@ -330,14 +341,14 @@ export default class ReactiveDot<T> {
 		_add2Queue(this, true);
 	}
 
-	map<R>(callback:(value:T) => R):ReactiveDot<R> {
-		return new ReactiveDot<R>(() => callback(this.get()));
+	map<R>(callback:(value:T) => R, options?:ReactiveOptions<R>):ReactiveDot<R> {
+		return new ReactiveDot<R>(() => callback(this.get()), options);
 	}
 
-	filter<R>(callback:(value:T) => R):ReactiveDot<R> {
+	filter(callback:(value:T) => boolean):ReactiveDot<T> {
 		let retVal;
 
-		return new ReactiveDot<R>(() => {
+		return new ReactiveDot<T>(() => {
 			const val = this.get();
 
 			if (callback(val)) {
@@ -347,6 +358,18 @@ export default class ReactiveDot<T> {
 			return retVal;
 		}, {
 			initialCall: false
+		});
+	}
+
+	startWith(value:T):ReactiveDot<T> {
+		return new ReactiveDot<T>(() => {
+			const newValue = this.get();
+
+			if (newValue != null) {
+				value = newValue;
+			}
+
+			return value;
 		});
 	}
 
@@ -390,9 +413,14 @@ export default class ReactiveDot<T> {
 		return this;
 	}
 
-	next<R>(callback:(value:T) => R):ReactiveDot<R> {
-		return new ReactiveDot<R>(() => callback(this.get()));
-	}
+	// merge<T>(dot:ReactiveDot<T>):ReactiveDot<Array<this, ReactiveDot<T>>> {
+	// 	const newDot = new ReactiveDot<Array<this, ReactiveDot<T>>>(() => [this, dot], {initialCall: false});
+	//
+	// 	dot.linkTo(newDot);
+	// 	this.linkTo(newDot);
+	//
+	// 	return newDot;
+	// }
 
 	arrayFilter(fn:Function):ReactiveDot<any[]> {
 		const dot = new ReactiveDot<any[]>(() => {
