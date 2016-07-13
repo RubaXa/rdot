@@ -413,15 +413,6 @@ export default class ReactiveDot<T> {
 		return this;
 	}
 
-	// merge<T>(dot:ReactiveDot<T>):ReactiveDot<Array<this, ReactiveDot<T>>> {
-	// 	const newDot = new ReactiveDot<Array<this, ReactiveDot<T>>>(() => [this, dot], {initialCall: false});
-	//
-	// 	dot.linkTo(newDot);
-	// 	this.linkTo(newDot);
-	//
-	// 	return newDot;
-	// }
-
 	arrayFilter(fn:Function):ReactiveDot<any[]> {
 		const dot = new ReactiveDot<any[]>(() => {
 			const data = fn(this.get());
